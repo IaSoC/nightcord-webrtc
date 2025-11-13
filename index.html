@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nightcord</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="chat-root">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="server-header">
+        <span>Nightcord</span>
+        <span style="font-size:16px;">&#9660;</span>
+      </div>
+      <div class="sidebar-content">
+        <div class="channel">
+          <div class="channel-icon"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M13,10.69v2.72H10.23V10.69Zm3,0v2.69h2.69V10.72ZM23.29,12A11.31,11.31,0,1,1,12,.67,11.31,11.31,0,0,1,23.29,12Zm-.18.07a8.87,8.87,0,1,0-8.87,8.86A8.87,8.87,0,0,0,23.11,12.05Z"
+                fill="white"></path>
+            </svg></div>
+          <span>聊天</span>
+        </div>
+        <div class="section-label">&gt; 聊天</div>
+        <div id="voice-users"></div>
+        <div class="section-label">&gt; 离线</div>
+      </div>
+    </div>
+    <!-- Main Chat Area -->
+    <div class="main">
+      <div class="chat-header">
+        <div class="channel-icon"><svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M13,10.69v2.72H10.23V10.69Zm3,0v2.69h2.69V10.72ZM23.29,12A11.31,11.31,0,1,1,12,.67,11.31,11.31,0,0,1,23.29,12Zm-.18.07a8.87,8.87,0,1,0-8.87,8.86A8.87,8.87,0,0,0,23.11,12.05Z"
+              fill="white"></path>
+          </svg></div>
+        <span style="font-weight:600;">聊天</span>
+        <div class="window-buttons">
+          <span class="window-btn blue"></span>
+          <span class="window-btn yellow"></span>
+          <span class="window-btn red"></span>
+        </div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="input-area">
+        <div class="input-box">
+          <input type="text" class="input" id="messageInput" placeholder="发送消息">
+          <div class="input-btns">
+            <button class="input-btn" title="@"><span>@</span></button>
+            <button class="input-btn" title="文本"><span style="font-weight:bold;">Aa</span></button>
+            <button class="input-btn" title="表情"><span>😊</span></button>
+            <button class="input-btn" title="附件"><span>📎</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- <script>
+const users = [
+  { name: "K", status: "online", avatar: "K", color: "bg-pink-500" },
+  { name: "雪", status: "online", avatar: "雪", color: "bg-purple-400" },
+  { name: "えななん", status: "online", avatar: "え", color: "bg-teal-400" },
+  { name: "Amia", status: "online", avatar: "A", color: "bg-pink-400" },
+];
+const messages = [
+  { user: "K", avatar: "K", color: "bg-purple-600", time: "昨日 15:51", text: "もう少しでアップできそう" },
+  { user: "Amia", avatar: "A", color: "bg-pink-400", time: "昨日 15:54", text: "お〜、楽しみ♪" },
+  { user: "Amia", avatar: "A", color: "bg-pink-400", time: "昨日 16:13", text: "ありがと！" },
+  { user: "雪", avatar: "雪", color: "bg-purple-400", time: "昨日 16:15", text: "聴いとくね" },
+  { user: "えななん", avatar: "え", color: "bg-teal-400", time: "昨日 20:36", text: "じゃ、一旦落ちる" },
+  { user: "K", avatar: "K", color: "bg-purple-600", time: "昨日 20:38", text: "うん、また25時に" },
+  { user: "えななん", avatar: "え", color: "bg-teal-400", time: "昨日 20:39", text: "はーい" },
+  { user: "Amia", avatar: "A", color: "bg-pink-400", time: "昨日 23:45", text: "誰がいる〜？" },
+  { user: "K", avatar: "K", color: "bg-purple-600", time: "昨日 23:46", text: "いるよ" },
+];
+function renderVoiceUsers() {
+  const container = document.getElementById('voice-users');
+  container.innerHTML = '';
+  users.forEach(user => {
+    const div = document.createElement('div');
+    div.className = 'voice-user';
+    div.innerHTML = `
+      <div class="voice-user-info">
+        <span class="avatar ${user.color}">${user.avatar}</span>
+        <span style="font-size:14px;">${user.name}</span>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+}
+function renderMessages() {
+  const container = document.getElementById('messages');
+  container.innerHTML = '';
+  messages.forEach(msg => {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message';
+    msgDiv.innerHTML = `
+      <span class="avatar ${msg.color}">${msg.avatar}</span>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-user">${msg.user}</span>
+          <span class="message-time">${msg.time}</span>
+        </div>
+        ${msg.text ? `<p class="message-text">${msg.text}</p>` : ''}
+        ${msg.file ? `
+          <div class="message-file">
+            <span class="file-icon">🎵</span>
+            <div class="file-info">
+              <div class="file-name">${msg.file.name}</div>
+              <div class="file-size">${msg.file.size}</div>
+            </div>
+            <button class="file-download" title="下载">⬇️</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+    container.appendChild(msgDiv);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  renderVoiceUsers();
+  renderMessages();
+  const input = document.getElementById('messageInput');
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && this.value.trim()) {
+      messages.push({
+        user: 'K',
+        avatar: 'K',
+        color: 'bg-purple-600',
+        time: '今',
+        text: this.value.trim()
+      });
+      this.value = '';
+      renderMessages();
+    }
+  });
+});
+</script> -->
+  <script src="event-bus.js"></script>
+  <script src="websocket-mgr.js"></script>
+  <script src="nightcord-mgr.js"></script>
+  <script src="ui-manager.js"></script>
+  <script src="nightcord.js"></script>
+  <script>
+    let nightcord = new Nightcord();
+    nightcord.init();
+  </script>
+  <script src="pangu.js"></script>
+</body>
+
+</html>
