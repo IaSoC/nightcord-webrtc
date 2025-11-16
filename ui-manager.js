@@ -417,6 +417,56 @@ class UIManager {
     });
 
     chatInput.focus();
+
+    // 表情按钮：自动配对行为
+    try {
+      const emojiBtn = document.querySelector('.input-btns button[title="表情"]');
+      if (emojiBtn) {
+        emojiBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const input = this.elements.chatInput;
+          if (!input) return;
+          const val = input.value || '';
+          const start = (typeof input.selectionStart === 'number') ? input.selectionStart : 0;
+          const end = (typeof input.selectionEnd === 'number') ? input.selectionEnd : 0;
+
+          // 如果无选区且光标当前位置后面是 ]，则直接跳过到 ] 之后（不插入新的）
+          if (start === end && val.charAt(start) === ']') {
+            const newPos = start + 1;
+            input.setSelectionRange(newPos, newPos);
+            input.focus();
+            return;
+          }
+
+          // 如果有选区，使用 [selection] 包裹选中文本
+          if (start !== end) {
+            const newVal = val.slice(0, start) + '[' + val.slice(start, end) + ']' + val.slice(end);
+            input.value = newVal;
+            // 把光标放到原选区之后的 ] 之后
+            const caretPos = end + 2; // +2: one for '[' inserted before selection, one for ']' after; caret after the closing bracket
+            input.setSelectionRange(caretPos, caretPos);
+            input.focus();
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+          }
+
+          // 默认：插入成对的 [] 并把光标放在中间
+          const newVal = val.slice(0, start) + '[]' + val.slice(end);
+          input.value = newVal;
+          const caretPos = start + 1;
+          input.setSelectionRange(caretPos, caretPos);
+          input.focus();
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+      }
+    } catch (e) {
+      const emojiBtn = document.querySelector('.input-btns button[title="表情"]');
+      if (!emojiBtn) {
+        console.warn('绑定表情按钮失败: 未找到表情按钮元素', e);
+      } else {
+        console.warn('绑定表情按钮失败: 事件监听器绑定异常', e, e && e.stack);
+      }
+    }
   }
 
   /**
