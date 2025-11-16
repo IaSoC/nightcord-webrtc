@@ -222,6 +222,60 @@ class UIManager {
   }
 
   /**
+   * Sticker 相关配置与渲染
+   */
+  stickerDir = 'https://houtar-disk.oss-cn-shanghai.aliyuncs.com/nightcord/stickers';
+
+  /**
+   * 将文本进行 HTML 转义，防止 XSS。
+   * @param {string} s
+   * @returns {string}
+   */
+  escapeHtml(s) {
+    if (s === null || s === undefined) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * 将消息文本中的 [name] 替换为 sticker 图片（如果存在）。
+   * 保持其余文本做 HTML 转义并保留换行。
+   * @param {string} text
+   * @returns {string} 安全的 html 片段
+   */
+  renderTextWithStickers(text) {
+    if (!text) return '';
+    const parts = [];
+    let lastIndex = 0;
+    const re = /\[([^\]]+)\]/g; // 匹配 [内容]
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const idx = m.index;
+      const matched = m[0];
+      const name = m[1];
+      // 添加前面的普通文本（转义）
+      if (idx > lastIndex) {
+        parts.push(this.escapeHtml(text.slice(lastIndex, idx)));
+      }
+      const key = String(name).toLowerCase();
+      const fileName = key.includes('_') ? key.replace('_', '/') : key;
+      const src = `${this.stickerDir}/${encodeURIComponent(fileName)}.png`;
+      parts.push(`<img class="sticker" src="${this.escapeHtml(src)}" alt="[${this.escapeHtml(name)}]" title="${this.escapeHtml(name)}" style="height:120px;vertical-align:middle;display:inline-block;" onerror="this.removeAttribute('style'); this.onerror=null;" />`);
+      lastIndex = idx + matched.length;
+    }
+    // 剩余文本
+    if (lastIndex < text.length) {
+      parts.push(this.escapeHtml(text.slice(lastIndex)));
+    }
+    // 将换行替换为 <br>
+    return parts.join('').replace(/\n/g, '<br>');
+  }
+
+  /**
    * 渲染语音用户列表
    */
   renderVoiceUsers() {
@@ -274,7 +328,7 @@ class UIManager {
           <span class="message-user">${msg.user}</span>
           <span class="message-time">${msg.time}</span>
         </div>
-        ${msg.text ? `<p class="message-text">${msg.text}</p>` : ''}
+  ${msg.text ? `<p class="message-text">${this.renderTextWithStickers(msg.text)}</p>` : ''}
       </div>
     `;
       this.elements.chatlog.appendChild(msgDiv);
