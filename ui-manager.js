@@ -27,7 +27,7 @@ class UIManager {
    */
   static throttle(fn, wait) {
     let lastTime = 0;
-    return function(...args) {
+    return function (...args) {
       const now = Date.now();
       if (now - lastTime >= wait) {
         lastTime = now;
@@ -126,8 +126,8 @@ class UIManager {
       // 合并：本地早期消息 + 服务器消息
       this.messages = [...localMsgs, ...serverMsgs].map(m => {
         // 兼容老数据
-        const {user, text, timestamp} = m;
-        const {name, avatar, color} = this.generateAvatar(user);
+        const { user, text, timestamp } = m;
+        const { name, avatar, color } = this.generateAvatar(user);
         return {
           user: name,
           avatar,
@@ -141,7 +141,7 @@ class UIManager {
       this.renderMessages();
       // 记录最新消息时间戳 到 per-room lastmsg
       if (this.messages.length > 0) {
-        const lastTs = this.messages[this.messages.length-1].timestamp;
+        const lastTs = this.messages[this.messages.length - 1].timestamp;
         if (this.storage) this.storage.setLastMsgTimestamp(room, lastTs); else this.setLastMsgTimestamp(room, lastTs);
       }
       // 欢迎消息
@@ -166,8 +166,8 @@ class UIManager {
       const local = (this.storage ? this.storage.loadMessages(this.currentRoom || 'nightcord-default') : this.loadLocalMessages(this.currentRoom || 'nightcord-default'));
       // transform similar to room:ready: ensure fields for rendering
       this.messages = (Array.isArray(local) ? local : []).map(m => {
-        const {user, text, timestamp} = m;
-        const {name, avatar, color} = this.generateAvatar(user);
+        const { user, text, timestamp } = m;
+        const { name, avatar, color } = this.generateAvatar(user);
         return {
           user: name,
           avatar,
@@ -279,38 +279,38 @@ class UIManager {
    * 渲染语音用户列表
    */
   renderVoiceUsers() {
-      this.elements.roster.innerHTML = '';
-      // 获取当前用户名
-      let currentName = null;
-      try {
-        currentName = localStorage.getItem('nightcord-username');
-      } catch (e) {}
-      this.roster.forEach(user => {
-        const div = document.createElement('div');
-        div.className = 'voice-user';
-        div.innerHTML = `
+    this.elements.roster.innerHTML = '';
+    // 获取当前用户名
+    let currentName = null;
+    try {
+      currentName = localStorage.getItem('nightcord-username');
+    } catch (e) {}
+    this.roster.forEach(user => {
+      const div = document.createElement('div');
+      div.className = 'voice-user';
+      div.innerHTML = `
           <div class="voice-user-info">
             <span class="avatar ${user.color}">${user.avatar}</span>
             <span style="font-size:14px;">${user.name}</span>
           </div>
         `;
-        // 只有是自己才可点击
-        if (user.name === currentName) {
-          div.style.cursor = 'pointer';
-          div.title = '点击修改你的昵称';
-          div.addEventListener('click', () => {
-            const newName = window.prompt('请输入新的昵称', user.name);
-            if (newName && newName !== user.name) {
-              localStorage.setItem('nightcord-username', newName);
-              // 通知业务逻辑层
-              if (this.onSetUser) {
-                this.onSetUser(newName);
-              }
+      // 只有是自己才可点击
+      if (user.name === currentName) {
+        div.style.cursor = 'pointer';
+        div.title = '点击修改你的昵称';
+        div.addEventListener('click', () => {
+          const newName = window.prompt('请输入新的昵称', user.name);
+          if (newName && newName !== user.name) {
+            localStorage.setItem('nightcord-username', newName);
+            // 通知业务逻辑层
+            if (this.onSetUser) {
+              this.onSetUser(newName);
             }
-          });
-        }
-        this.elements.roster.appendChild(div);
-      });
+          }
+        });
+      }
+      this.elements.roster.appendChild(div);
+    });
   }
 
   /**
@@ -333,7 +333,7 @@ class UIManager {
     `;
       this.elements.chatlog.appendChild(msgDiv);
     });
-    
+
     // 智能滚动逻辑
     // 检查是否应该自动滚动到底部
     const shouldAutoScroll = this.shouldAutoScrollToBottom();
@@ -409,6 +409,92 @@ class UIManager {
       }
     });
 
+    /**
+     * Handles bracket insertion with auto-pairing for both keyboard and emoji button inputs.
+     * - If there is a selection, wraps the selected text with [ and ] and places the caret after the closing bracket.
+     * - If the next character is ']', skips over it instead of inserting a duplicate.
+     * - Otherwise, inserts paired [] and places the caret between them.
+     *
+     * @param {HTMLInputElement|HTMLTextAreaElement} input - The input element to modify.
+     */
+    const handleLeftBracket = (input) => {
+      const val = input.value || '';
+      const start = input.selectionStart ?? 0;
+      const end = input.selectionEnd ?? start;
+
+      if (start !== end) {
+        // wrap selection with [ ... ] and place caret after the closing bracket
+        const newVal = val.slice(0, start) + '[' + val.slice(start, end) + ']' + val.slice(end);
+        input.value = newVal;
+        const caretPos = end + 2; // after the closing ]
+        input.setSelectionRange(caretPos, caretPos);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+        return;
+      }
+
+      // if next char is ']', skip over it
+      if (val.charAt(start) === ']') {
+        input.setSelectionRange(start + 1, start + 1);
+        input.focus();
+        return;
+      }
+
+      // insert paired [] and put caret between
+      const newVal = val.slice(0, start) + '[]' + val.slice(end);
+      input.value = newVal;
+      const caretPos = start + 1;
+      input.setSelectionRange(caretPos, caretPos);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.focus();
+    };
+
+    // Bracket auto-pairing and overwrite behavior for keyboard input
+    chatInput.addEventListener('keydown', (event) => {
+      try {
+        const val = chatInput.value || '';
+        const start = chatInput.selectionStart ?? 0;
+        const end = chatInput.selectionEnd ?? start;
+
+        // '[': use shared handler
+        if (event.key === '[') {
+          event.preventDefault();
+          handleLeftBracket(chatInput);
+          return;
+        }
+
+        // ']': if next is ']', skip over instead of inserting duplicate
+        if (event.key === ']') {
+          if (start === end && val.charAt(start) === ']') {
+            event.preventDefault();
+            chatInput.setSelectionRange(start + 1, start + 1);
+            return;
+          }
+          // otherwise allow default insertion
+        }
+
+        // Backspace: if caret is between an empty pair [] then delete both
+        if (event.key === 'Backspace') {
+          if (start === end && start > 0 && val.charAt(start - 1) === '[' && val.charAt(start) === ']') {
+            event.preventDefault();
+            const newVal = val.slice(0, start - 1) + val.slice(start + 1);
+            const caretPos = start - 1;
+            chatInput.value = newVal;
+            chatInput.setSelectionRange(caretPos, caretPos);
+            chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+            return;
+          }
+        }
+      } catch (e) {
+        // don't block typing on unexpected errors
+        console.warn('Error in keydown handler (bracket auto-pairing and backspace) for key:', event.key, {
+          value: chatInput.value,
+          selectionStart: chatInput.selectionStart,
+          selectionEnd: chatInput.selectionEnd
+        }, e);
+      }
+    });
+
     // Focus chat input on click
     this.elements.main.addEventListener("click", () => {
       if (window.getSelection().toString() == "") {
@@ -418,7 +504,7 @@ class UIManager {
 
     chatInput.focus();
 
-    // 表情按钮：自动配对行为
+    // 表情按钮：使用与按键 '[' 相同的自动配对逻辑
     try {
       const emojiBtn = document.querySelector('.input-btns button[title="表情"]');
       if (emojiBtn) {
@@ -426,37 +512,7 @@ class UIManager {
           e.preventDefault();
           const input = this.elements.chatInput;
           if (!input) return;
-          const val = input.value || '';
-          const start = (typeof input.selectionStart === 'number') ? input.selectionStart : 0;
-          const end = (typeof input.selectionEnd === 'number') ? input.selectionEnd : 0;
-
-          // 如果无选区且光标当前位置后面是 ]，则直接跳过到 ] 之后（不插入新的）
-          if (start === end && val.charAt(start) === ']') {
-            const newPos = start + 1;
-            input.setSelectionRange(newPos, newPos);
-            input.focus();
-            return;
-          }
-
-          // 如果有选区，使用 [selection] 包裹选中文本
-          if (start !== end) {
-            const newVal = val.slice(0, start) + '[' + val.slice(start, end) + ']' + val.slice(end);
-            input.value = newVal;
-            // 把光标放到原选区之后的 ] 之后
-            const caretPos = end + 2; // +2: one for '[' inserted before selection, one for ']' after; caret after the closing bracket
-            input.setSelectionRange(caretPos, caretPos);
-            input.focus();
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            return;
-          }
-
-          // 默认：插入成对的 [] 并把光标放在中间
-          const newVal = val.slice(0, start) + '[]' + val.slice(end);
-          input.value = newVal;
-          const caretPos = start + 1;
-          input.setSelectionRange(caretPos, caretPos);
-          input.focus();
-          input.dispatchEvent(new Event('input', { bubbles: true }));
+          handleLeftBracket(input);
         });
       }
     } catch (e) {
