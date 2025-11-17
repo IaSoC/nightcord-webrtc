@@ -133,8 +133,9 @@ function buildCanonicalHeaders(headers) {
 }
 
 function getCredential(onlyDate, signRegion, accessKeyId, product) {
-	// similar to AWS credential scope but uses product and oss4_request
-	return `${accessKeyId}/${onlyDate}/${signRegion}/${product}/oss4_request`;
+	// similar to AWS credential scope but uses product and aliyun_v4_request
+	// x-oss-credential 格式：<AccessKeyId>/<SignDate>/<Region>/<product>/aliyun_v4_request
+	return `${accessKeyId}/${onlyDate}/${signRegion}/${product}/aliyun_v4_request`;
 }
 
 function getCanonicalRequest(method, { headers = {}, queries = {} }, bucket, objectName, fixedAdditionalHeaders) {
@@ -161,7 +162,7 @@ function getCanonicalRequest(method, { headers = {}, queries = {} }, bucket, obj
 async function getStringToSign(signRegion, formattedDate, canonicalRequest, product) {
 	const algorithm = 'OSS4-HMAC-SHA256';
 	const hashedRequest = await sha256(canonicalRequest, 'hex');
-	const credentialScope = `${formattedDate.split('T')[0]}/${signRegion}/${product}/oss4_request`;
+	const credentialScope = `${formattedDate.split('T')[0]}/${signRegion}/${product}/aliyun_v4_request`;
 	return [algorithm, formattedDate, credentialScope, hashedRequest].join('\n');
 }
 
@@ -170,7 +171,7 @@ async function getSignatureV4(secret, onlyDate, signRegion, stringToSign, produc
 	const kDate = await hmac('OSS4' + secret, onlyDate);
 	const kRegion = await hmac(kDate, signRegion);
 	const kService = await hmac(kRegion, product);
-	const kSigning = await hmac(kService, 'oss4_request');
+	const kSigning = await hmac(kService, 'aliyun_v4_request');
 	return await hmac(kSigning, stringToSign, 'hex');
 }
 
