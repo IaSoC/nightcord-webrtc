@@ -1,4 +1,4 @@
-// Use Web Crypto (globalThis.crypto.subtle) when available. Dynamic Node fallback
+// Use Web Crypto (crypto.subtle) when available. Dynamic Node fallback
 // is used only where necessary to keep this file compatible with both
 // Cloudflare Pages/Workers and local Node development.
 
@@ -58,34 +58,30 @@ async function hmac(key, msg, encoding) {
 	const textEncoder = new TextEncoder();
 	const msgBytes = textEncoder.encode(msg);
 
-	if (globalThis.crypto && globalThis.crypto.subtle) {
+	// Require Web Crypto API (crypto.subtle). Cloudflare Workers and modern browsers provide this.
+	if (typeof crypto !== 'undefined' && crypto.subtle) {
 		const keyBytes = typeof key === 'string' ? textEncoder.encode(key) : (key instanceof Uint8Array ? key : new Uint8Array(key));
-		const cryptoKey = await globalThis.crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-		const sig = await globalThis.crypto.subtle.sign('HMAC', cryptoKey, msgBytes);
+		const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+		const sig = await crypto.subtle.sign('HMAC', cryptoKey, msgBytes);
 		if (encoding === 'hex') return bufferToHex(sig);
 		return new Uint8Array(sig);
-	} else {
-		// Node fallback via dynamic import to avoid bundling Node builtin in Pages build
-		const nodeCrypto = await import('crypto');
-		const h = nodeCrypto.createHmac('sha256', key).update(msg, 'utf8');
-		if (encoding === 'hex') return h.digest('hex');
-		return h.digest();
 	}
+
+	// If we reach here the environment does not provide Web Crypto.
+	throw new Error('Web Crypto API (crypto.subtle) is required but not available in this environment.');
 }
 
 async function sha256(msg, encoding) {
 	const textEncoder = new TextEncoder();
 	const msgBytes = textEncoder.encode(msg);
-	if (globalThis.crypto && globalThis.crypto.subtle) {
-		const digest = await globalThis.crypto.subtle.digest('SHA-256', msgBytes);
+	if (typeof crypto !== 'undefined' && crypto.subtle) {
+		const digest = await crypto.subtle.digest('SHA-256', msgBytes);
 		if (encoding === 'hex') return bufferToHex(digest);
 		return new Uint8Array(digest);
-	} else {
-		const nodeCrypto = await import('crypto');
-		const h = nodeCrypto.createHash('sha256').update(msg, 'utf8');
-		if (encoding === 'hex') return h.digest('hex');
-		return h.digest();
 	}
+
+	// Web Crypto API required
+	throw new Error('Web Crypto API (crypto.subtle) is required but not available in this environment.');
 }
 
 function encodeURIComponentStrict(str) {
