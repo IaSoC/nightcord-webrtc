@@ -58,7 +58,7 @@ async function hmac(key, msg, encoding) {
 	const textEncoder = new TextEncoder();
 	const msgBytes = textEncoder.encode(msg);
 
-	// Require Web Crypto API (crypto.subtle). Cloudflare Workers and modern browsers provide this.
+	// Use Web Crypto API (crypto.subtle) available in Cloudflare Workers / browsers.
 	if (typeof crypto !== 'undefined' && crypto.subtle) {
 		const keyBytes = typeof key === 'string' ? textEncoder.encode(key) : (key instanceof Uint8Array ? key : new Uint8Array(key));
 		const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
@@ -67,8 +67,7 @@ async function hmac(key, msg, encoding) {
 		return new Uint8Array(sig);
 	}
 
-	// If we reach here the environment does not provide Web Crypto.
-	throw new Error('Web Crypto API (crypto.subtle) is required but not available in this environment.');
+	throw new Error('HMAC failed: no crypto.subtle available in this environment.');
 }
 
 async function sha256(msg, encoding) {
@@ -80,8 +79,7 @@ async function sha256(msg, encoding) {
 		return new Uint8Array(digest);
 	}
 
-	// Web Crypto API required
-	throw new Error('Web Crypto API (crypto.subtle) is required but not available in this environment.');
+	throw new Error('SHA256 failed: no crypto.subtle available in this environment.');
 }
 
 function encodeURIComponentStrict(str) {
@@ -116,17 +114,27 @@ function buildCanonicalQueryString(queries) {
 	return parts.join('&');
 }
 
-function buildCanonicalHeaders(headers) {
-	const canon = [];
-	const names = Object.keys(headers || {})
-		.map((n) => String(n).toLowerCase())
-		.sort();
-	const unique = Array.from(new Set(names));
-	unique.forEach((name) => {
+function buildCanonicalHeaders(headers, additionalHeaders) {
+	// Follow OSS SDK behavior: include headers that are content-type, content-md5,
+	// or start with x-oss-, plus any additionalHeaders explicitly requested.
+	const OSS_PREFIX = 'x-oss-';
+	const names = Object.keys(headers || {}).map((n) => String(n).toLowerCase());
+	const toSign = new Set();
+	// include additionalHeaders (if provided)
+	if (additionalHeaders && Array.isArray(additionalHeaders)) {
+		additionalHeaders.forEach((h) => toSign.add(String(h).toLowerCase()));
+	}
+	names.forEach((n) => {
+		if (n === 'content-type' || n === 'content-md5' || n.indexOf(OSS_PREFIX) === 0) {
+			toSign.add(n);
+		}
+	});
+	const unique = Array.from(toSign).sort();
+	const canon = unique.map((name) => {
 		let value = headers[name] || headers[String(name)];
-		if (value === undefined) return;
+		if (value === undefined) value = '';
 		value = String(value).trim().replace(/\s+/g, ' ');
-		canon.push(name + ':' + value + '\n');
+		return name + ':' + value + '\n';
 	});
 	const signedHeaders = unique.join(';');
 	return { canonicalHeaders: canon.join(''), signedHeaders };
@@ -143,9 +151,12 @@ function getCanonicalRequest(method, { headers = {}, queries = {} }, bucket, obj
 	const host = headers.host || `${bucket}.${headers.endpointHost || 'oss-' + (headers.region || '') + '.aliyuncs.com'}`;
 	headers.host = headers.host || host;
 
-	const canonicalURI = encodeURIPath(objectName);
+	// Match SDK behavior: include bucket name as the first segment of the canonical URI when present
+	// Avoid producing double-slashes when objectName begins with '/'. Normalize objectName.
+	const objNameNormalized = objectName ? (objectName.charAt(0) === '/' ? objectName.slice(1) : objectName) : '';
+	const canonicalURI = encodeURIPath(bucket ? `${bucket}/${objNameNormalized}` : (objNameNormalized || ''));
 	const canonicalQueryString = buildCanonicalQueryString(queries);
-	const { canonicalHeaders, signedHeaders } = buildCanonicalHeaders(headers);
+	const { canonicalHeaders, signedHeaders } = buildCanonicalHeaders(headers, fixedAdditionalHeaders);
 	const payloadHash = 'UNSIGNED-PAYLOAD';
 
 	const canonicalRequest = [
@@ -167,8 +178,8 @@ async function getStringToSign(signRegion, formattedDate, canonicalRequest, prod
 }
 
 async function getSignatureV4(secret, onlyDate, signRegion, stringToSign, product) {
-	// Key derivation: kDate = HMAC('OSS4' + secret, onlyDate)
-	const kDate = await hmac('OSS4' + secret, onlyDate);
+	// Cloudflare/Worker friendly implementation using Web Crypto
+	const kDate = await hmac('aliyun_v4' + secret, onlyDate);
 	const kRegion = await hmac(kDate, signRegion);
 	const kService = await hmac(kRegion, product);
 	const kSigning = await hmac(kService, 'aliyun_v4_request');
@@ -189,7 +200,9 @@ async function getSignatureV4(secret, onlyDate, signRegion, stringToSign, produc
 async function signatureUrlV4(options, method, expires, request, objectName, additionalHeaders) {
 	const { cloudBoxId } = options || {};
 	const product = getProduct(cloudBoxId);
-	const signRegion = getSignRegion(options.region, cloudBoxId);
+	// Normalize region for signing: strip optional leading 'oss-' to match SDK's getStandardRegion behavior
+	const normalizedRegion = options.region ? String(options.region).replace(/^oss-/, '') : options.region;
+	const signRegion = getSignRegion(normalizedRegion, cloudBoxId);
 	const headers = Object.assign({}, (request && request.headers) || {});
 	const queries = Object.assign({}, (request && request.queries) || {});
 	const date = new Date();
@@ -214,60 +227,76 @@ async function signatureUrlV4(options, method, expires, request, objectName, add
 
 	// include host and helpful headers for canonicalization
 	const tempHeaders = Object.assign({}, headers);
-	// Provide region/endpoint hints for host construction used in canonical
-	if (!tempHeaders.endpointHost && options.region) tempHeaders.region = options.region;
+	// Normalize region used in endpoint/host (strip optional leading 'oss-') so final URL host matches SDK's endpoint construction
+	const regionPartForEndpoint = options.region ? String(options.region).replace(/^oss-/, '') : '';
+	if (!tempHeaders.endpointHost && regionPartForEndpoint) tempHeaders.region = regionPartForEndpoint;
 
-	const { canonicalRequest, signedHeaders } = getCanonicalRequest(
-		method,
-		{
-			headers: tempHeaders,
-			queries
-		},
-		options.bucket,
-		objectName,
-		fixedAdditionalHeaders
-	);
+	const { canonicalRequest, signedHeaders } = (function () {
+		const res = getCanonicalRequest(
+			method,
+			{ headers: tempHeaders, queries },
+			options.bucket,
+			objectName,
+			fixedAdditionalHeaders
+		);
+		// Normalize return shape
+		if (typeof res === 'string') return { canonicalRequest: res, signedHeaders: '' };
+		return res;
+	})();
 	const stringToSign = await getStringToSign(signRegion, formattedDate, canonicalRequest, product);
 
-	queries['x-oss-signature'] = await getSignatureV4(
-		options.accessKeySecret,
-		onlyDate,
-		signRegion,
-		stringToSign,
-		product
-	);
+	const signatureValue = await getSignatureV4(options.accessKeySecret, onlyDate, signRegion, stringToSign, product);
+
+	queries['x-oss-signature'] = signatureValue;
+
+	// If the caller provides a `_getReqUrl` (like the OSS SDK prototype does),
+	// prefer using it so our final URL string matches the SDK's endpoint/path formatting.
+	// Use WHATWG URL only (avoid Node-only require/url.parse to keep this file serverless-friendly).
+	if (this && isFunction(this._getReqUrl)) {
+		try {
+			const base = this._getReqUrl({ bucket: options.bucket, object: objectName });
+			const parsed2 = new URL(base);
+			const basePath = parsed2.pathname && parsed2.pathname !== '/' ? parsed2.pathname.replace(/\/$/, '') : '';
+			const objectPath = objectName ? (objectName.charAt(0) === '/' ? objectName : '/' + objectName) : '/';
+			parsed2.pathname = basePath + objectPath;
+			parsed2.search = '';
+			Object.keys(queries).forEach((k) => {
+				const v = queries[k];
+				if (v === undefined || v === null) return;
+				const val = Array.isArray(v) ? v.join(',') : String(v);
+				parsed2.searchParams.set(k, val);
+			});
+			return parsed2.toString();
+		} catch (e) {
+			// if _getReqUrl failed for any reason, fall back to endpoint construction below
+		}
+	}
 
 	// Build base URL. Prefer options.endpoint when provided.
 	let endpoint;
 	if (options.endpoint) {
 		endpoint = options.endpoint.replace(/\/+$/, '');
 	} else if (options.region) {
-		// default style: https://{bucket}.oss-{region}.aliyuncs.com
-		endpoint = `https://${options.bucket}.oss-${options.region}.aliyuncs.com`;
+		// default style: https://${bucket}.oss-${region}.aliyuncs.com
+		endpoint = `https://${options.bucket}.oss-${regionPartForEndpoint}.aliyuncs.com`;
 	} else {
 		endpoint = `https://${options.bucket}.aliyuncs.com`;
 	}
 
+	// Normalize object path so concatenation does not produce double slashes
 	const objectPath = objectName ? (objectName.charAt(0) === '/' ? objectName : '/' + objectName) : '/';
-		// Use WHATWG URL API instead of Node's `url` module so this works in
-		// browser/Workers/Pages environments and avoids bundling the Node builtin.
-		const parsed = new URL(endpoint);
-		// append object path
-		parsed.pathname = (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/$/, '') : '') + objectPath;
 
-		// populate query/search params from `queries` object
-		// clear existing search
-		parsed.search = '';
-		Object.keys(queries).forEach((k) => {
-			const v = queries[k];
-			if (v === undefined || v === null) return;
-			const val = Array.isArray(v) ? v.join(',') : String(v);
-			parsed.searchParams.set(k, val);
-		});
-		// include signed headers list for clients that may need it
-		parsed.searchParams.set('x-oss-signedheaders', signedHeaders);
-
-		return parsed.toString();
+	// Build the URL using WHATWG URL (cloud-worker/browser-friendly)
+	const parsed = new URL(endpoint);
+	parsed.pathname = (parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/$/, '') : '') + objectPath;
+	parsed.search = '';
+	Object.keys(queries).forEach((k) => {
+		const v = queries[k];
+		if (v === undefined || v === null) return;
+		const val = Array.isArray(v) ? v.join(',') : String(v);
+		parsed.searchParams.set(k, val);
+	});
+	return parsed.toString();
 }
 
 export async function onRequest(context) {
@@ -321,12 +350,11 @@ export async function onRequest(context) {
 		try { requestParts = JSON.parse(requestParts); } catch (e) { requestParts = {}; }
 	}
 
-	// Prefer credentials from Cloudflare Pages Secrets (context.env) or local process.env
-	const env = (context && context.env) || (typeof process !== 'undefined' ? process.env : {});
+	// Prefer credentials from Cloudflare Pages Secrets (context.env). Do not depend on Node's process.env.
+	const env = (context && context.env) || {};
 	const getEnvVal = (names) => {
 		for (const n of names) {
 			if (env && typeof env[n] !== 'undefined' && env[n] !== null) return env[n];
-			if (typeof process !== 'undefined' && process.env && typeof process.env[n] !== 'undefined') return process.env[n];
 		}
 		return undefined;
 	};
