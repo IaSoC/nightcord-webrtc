@@ -1,10 +1,67 @@
 // Minimal implementation of ali-oss `signatureUrlV4` behavior (presigned URL v4)
-// - standalone, no SDK usage
 // - export: async function signatureUrlV4(opts) -> signedUrl
 // - opts: { accessKeyId, accessKeySecret, region, bucket, object, method, expires, headers, queries, endpoint, additionalHeaders, securityToken }
 // A very small subset of features to generate OSS4-HMAC-SHA256 presigned URLs.
 
-const crypto = require('crypto');
+let subtle = null;
+let nodeCrypto = null;
+try {
+  if (crypto && crypto.subtle) {
+    subtle = crypto.subtle;
+  } else if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.subtle) {
+    subtle = globalThis.crypto.subtle;
+  } else {
+    nodeCrypto = require('crypto');
+    if (nodeCrypto && nodeCrypto.webcrypto && nodeCrypto.webcrypto.subtle) subtle = nodeCrypto.webcrypto.subtle;
+  }
+} catch (e) {
+  // ignore
+}
+
+const textEncoder = new (globalThis.TextEncoder || require('util').TextEncoder)();
+
+function toUint8(data) {
+  if (data instanceof Uint8Array) return data;
+  if (typeof data === 'string') return textEncoder.encode(data);
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return new Uint8Array(data);
+}
+
+function bufToHex(buf) {
+  const b = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < b.length; i++) {
+    s += (b[i] < 16 ? '0' : '') + b[i].toString(16);
+  }
+  return s;
+}
+
+async function sha256HexAsync(str) {
+  if (subtle) {
+    const data = toUint8(str);
+    const digest = await subtle.digest('SHA-256', data);
+    return bufToHex(digest);
+  }
+  // fallback to node crypto
+  if (!nodeCrypto) nodeCrypto = require('crypto');
+  return nodeCrypto.createHash('sha256').update(String(str)).digest('hex');
+}
+
+async function hmacSha256Async(keyBytes, data) {
+  // keyBytes: Uint8Array or ArrayBuffer
+  // data: string or Uint8Array
+  if (subtle) {
+    const keyUint8 = toUint8(keyBytes);
+    const importedKey = await subtle.importKey('raw', keyUint8, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = await subtle.sign('HMAC', importedKey, toUint8(data));
+    return new Uint8Array(sig);
+  }
+  // fallback to node crypto HMAC
+  if (!nodeCrypto) nodeCrypto = require('crypto');
+  const h = nodeCrypto.createHmac('sha256', Buffer.from(keyBytes));
+  h.update(typeof data === 'string' ? data : Buffer.from(data));
+  return new Uint8Array(h.digest());
+}
 
 function encodeString(str) {
   const s = String(str === undefined || str === null ? '' : str);
@@ -99,19 +156,23 @@ function getCanonicalRequest(method, request, bucketName, objectName, additional
   return parts.join('\n');
 }
 
-function getStringToSign(region, dateTime, canonicalRequest, product) {
+async function getStringToSign(region, dateTime, canonicalRequest, product) {
   const productName = product || getProduct();
   const scope = `${dateTime.split('T')[0]}/${region}/${productName}/aliyun_v4_request`;
-  const hashed = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
+  const hashed = await sha256HexAsync(canonicalRequest);
   return ['OSS4-HMAC-SHA256', dateTime, scope, hashed].join('\n');
 }
 
-function getSignatureV4(accessKeySecret, date, region, stringToSign, product) {
-  const kDate = crypto.createHmac('sha256', `aliyun_v4${accessKeySecret}`).update(date).digest();
-  const kRegion = crypto.createHmac('sha256', kDate).update(region).digest();
-  const kService = crypto.createHmac('sha256', kRegion).update(product).digest();
-  const kSigning = crypto.createHmac('sha256', kService).update('aliyun_v4_request').digest();
-  return crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+async function getSignatureV4(accessKeySecret, date, region, stringToSign, product) {
+  const prod = product || getProduct();
+  // Derive keys: KDate = HMAC("aliyun_v4" + secret, date)
+  const kSecret = toUint8(`aliyun_v4${accessKeySecret}`);
+  const kDate = await hmacSha256Async(kSecret, date);
+  const kRegion = await hmacSha256Async(kDate, region);
+  const kService = await hmacSha256Async(kRegion, prod);
+  const kSigning = await hmacSha256Async(kService, 'aliyun_v4_request');
+  const sig = await hmacSha256Async(kSigning, stringToSign);
+  return bufToHex(sig);
 }
 
 function buildEndpoint(opts) {
@@ -152,8 +213,8 @@ async function signatureUrlV4(opts) {
   if (securityToken) q['x-oss-security-token'] = securityToken;
 
   const canonicalRequest = getCanonicalRequest(method, { headers, queries: q }, bucket, object, fixedAdditional);
-  const stringToSign = getStringToSign(signRegion, timeStamp, canonicalRequest, product);
-  q['x-oss-signature'] = getSignatureV4(accessKeySecret, dateStamp, signRegion, stringToSign, product);
+  const stringToSign = await getStringToSign(signRegion, timeStamp, canonicalRequest, product);
+  q['x-oss-signature'] = await getSignatureV4(accessKeySecret, dateStamp, signRegion, stringToSign, product);
 
   // build final url
   const base = buildEndpoint({ endpoint, bucket, region });
