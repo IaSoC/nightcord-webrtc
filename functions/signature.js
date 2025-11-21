@@ -18,7 +18,7 @@ try {
   // ignore
 }
 
-const textEncoder = new (globalThis.TextEncoder || require('util').TextEncoder)();
+const textEncoder = new (TextEncoder || globalThis.TextEncoder || require('util').TextEncoder)();
 
 function toUint8(data) {
   if (data instanceof Uint8Array) return data;
@@ -225,40 +225,6 @@ async function signatureUrlV4(opts) {
     .join('&');
 
   return `${base}${objectPath}${qs ? '?' + qs : ''}`;
-}
-
-module.exports = signatureUrlV4;
-
-if (require.main === module) {
-  // quick example: set env vars ACCESS_KEY_ID, ACCESS_KEY_SECRET, BUCKET, OBJECT, REGION
-  (async () => {
-    const ACCESS_KEY_ID = process.env.ACCESS_KEY_ID;
-    const ACCESS_KEY_SECRET = process.env.ACCESS_KEY_SECRET;
-    const BUCKET = process.env.BUCKET;
-    const OBJECT = process.env.OBJECT || 'test.txt';
-    const REGION = process.env.REGION || 'oss-cn-hangzhou';
-
-    if (!ACCESS_KEY_ID || !ACCESS_KEY_SECRET || !BUCKET) {
-      console.error('Please set ACCESS_KEY_ID, ACCESS_KEY_SECRET and BUCKET in environment to run the example.');
-      process.exit(1);
-    }
-
-    try {
-      const url = await signatureUrlV4({
-        accessKeyId: ACCESS_KEY_ID,
-        accessKeySecret: ACCESS_KEY_SECRET,
-        region: REGION,
-        bucket: BUCKET,
-        object: OBJECT,
-        method: 'GET',
-        expires: 60
-      });
-      console.log(url);
-    } catch (err) {
-      console.error(err);
-      process.exit(2);
-    }
-  })();
 }
 
 export async function onRequest(context) {
