@@ -225,7 +225,7 @@ class UIManager {
   /**
    * Sticker 相关配置与渲染
    */
-  stickerDir = 'https://fcdata.forclass.net/AttachFiles/171806/stickers';
+  stickerDir = 'https://sticker.nightcord.de5.net/stickers';
 
   /**
    * 将文本进行 HTML 转义，防止 XSS。
