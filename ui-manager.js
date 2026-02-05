@@ -121,6 +121,9 @@ class UIManager {
    * @private
    */
   setupEventListeners() {
+    // 设置移动端菜单
+    this.setupMobileMenu();
+    
     // Subscribe to chat room events
     this.eventBus.on('message:received', (data) => {
       // 只存储非系统消息
@@ -231,7 +234,10 @@ class UIManager {
 
     // Show Dialog
     nameChooser.classList.remove('hidden');
-    setTimeout(() => nameInput.focus(), 100);
+    // 移动设备上不自动聚焦，避免虚拟键盘自动弹出
+    if (window.innerWidth > 768) {
+      setTimeout(() => nameInput.focus(), 100);
+    }
 
     // Save callback for the event handler
     this.pendingNameCallback = callback;
@@ -284,13 +290,13 @@ class UIManager {
       
       if (!username) {
         showInputError('请输入昵称');
-        nameInput.focus();
+        if (window.innerWidth > 768) nameInput.focus();
         return;
       }
       
       if (username.length > 32) {
         showInputError('昵称太长了，请控制在 32 个字符以内');
-        nameInput.focus();
+        if (window.innerWidth > 768) nameInput.focus();
         return;
       }
 
@@ -596,14 +602,14 @@ class UIManager {
         const caretPos = end + 2; // after the closing ]
         input.setSelectionRange(caretPos, caretPos);
         input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.focus();
+        if (window.innerWidth > 768) input.focus();
         return;
       }
 
       // if next char is ']', skip over it
       if (val.charAt(start) === ']') {
         input.setSelectionRange(start + 1, start + 1);
-        input.focus();
+        if (window.innerWidth > 768) input.focus();
         return;
       }
 
@@ -613,7 +619,7 @@ class UIManager {
       const caretPos = start + 1;
       input.setSelectionRange(caretPos, caretPos);
       input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.focus();
+      if (window.innerWidth > 768) input.focus();
     };
 
     // Bracket auto-pairing and overwrite behavior for keyboard input
@@ -669,11 +675,14 @@ class UIManager {
       if (e.target.closest('.mention-list') || e.target.closest('.mention-item')) return;
 
       if (window.getSelection().toString() == "") {
-        chatInput.focus();
+        if (window.innerWidth > 768) chatInput.focus();
       }
     });
 
-    chatInput.focus();
+    // 移动设备上不自动聚焦聊天输入框
+    if (window.innerWidth > 768) {
+      chatInput.focus();
+    }
 
     // 表情按钮：使用与按键 '[' 相同的自动配对逻辑
     try {
@@ -1039,5 +1048,44 @@ class UIManager {
       return `${weekdays[date.getDay()]} ${timeString}`;
     }
     return `${date.getMonth() + 1}月${date.getDate()}日 ${timeString}`;
+  }
+
+  /**
+   * 设置移动端菜单
+   */
+  setupMobileMenu() {
+    const sidebar = document.querySelector('.sidebar');
+    const chatHeader = document.querySelector('.chat-header');
+    
+    if (!sidebar || !chatHeader) return;
+    
+    // 点击头部左侧区域切换侧边栏
+    chatHeader.addEventListener('click', (e) => {
+      // 只在点击左侧区域时触发（前50px）
+      if (e.clientX < 50) {
+        sidebar.classList.toggle('show');
+      }
+    });
+    
+    // 点击侧边栏外部区域关闭侧边栏
+    document.addEventListener('click', (e) => {
+      if (sidebar.classList.contains('show')) {
+        // 检查点击是否在侧边栏外部且不是头部按钮
+        if (!sidebar.contains(e.target) && !e.target.closest('.chat-header')) {
+          sidebar.classList.remove('show');
+        }
+      }
+    });
+    
+    // 点击侧边栏内的频道时关闭侧边栏（移动端）
+    const channels = sidebar.querySelectorAll('.channel, .voice-user');
+    channels.forEach(channel => {
+      channel.addEventListener('click', () => {
+        // 只在移动端关闭（通过检测窗口宽度）
+        if (window.innerWidth <= 768) {
+          sidebar.classList.remove('show');
+        }
+      });
+    });
   }
 }
