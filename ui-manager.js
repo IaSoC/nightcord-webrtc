@@ -85,37 +85,35 @@ class UIManager {
     }
 
     this.setupEventListeners();
-    this.setupAutocompleteFeature();
-    this.loadStickerData();
-  }
 
-  /**
-   * Load sticker data for autocomplete
-   * @private
-   */
-  loadStickerData() {
-    this.stickers = [];
-    fetch('https://sticker.nightcord.de5.net/autocomplete.json')
-      .then(res => res.json())
-      .then(data => {
-        const stickers = [];
-        for (const [category, items] of Object.entries(data)) {
-          for (const [label, pinyin] of Object.entries(items)) {
-            const filename = String(label);
-            stickers.push({
-              label: label,
-              pinyin: pinyin,
-              category: category,
-              // Search in both label and filename (pinyin)
-              searchKey: (label + pinyin).toLowerCase(),
-              code: `${category}_${filename}`,
-              url: `${this.stickerDir}/${category}/${encodeURIComponent(filename)}.png`
-            });
-          }
-        }
-        this.stickers = stickers;
-      })
-      .catch(e => console.error('Failed to load sticker autocomplete data', e));
+    if (typeof StickerService !== 'undefined') {
+      this.stickerService = new StickerService({
+        stickerDir: this.stickerDir,
+        widthThreshold: UIManager.STICKER_WIDTH_THRESHOLD
+      });
+      try {
+        this.stickerService.loadAutocompleteData('https://sticker.nightcord.de5.net/autocomplete.json');
+      } catch (error) {
+        console.error('Failed to load sticker autocomplete data:', error);
+        this.addChatMessage('系统', '无法加载贴纸数据，请稍后重试。', null, this.systemIcon, 'bg-red-600');
+      }
+    } else {
+      console.warn('StickerService not available, sticker rendering/autocomplete disabled');
+      this.stickerService = null;
+    }
+
+    if (typeof AutocompleteManager !== 'undefined') {
+      this.autocomplete = new AutocompleteManager({
+        input: this.elements.chatInput,
+        list: document.querySelector('#mention-list'),
+        atButton: document.querySelector('.input-btns button[title="@"]'),
+        getAllUsers: () => this.getAllUsers(),
+        getStickers: () => (this.stickerService ? this.stickerService.getStickers() : [])
+      });
+    } else {
+      console.warn('AutocompleteManager not available, mention/sticker autocomplete disabled');
+      this.autocomplete = null;
+    }
   }
 
   /**
@@ -273,103 +271,6 @@ class UIManager {
       .replace(/'/g, '&#39;');
   }
 
-  /**
-   * 将消息文本中的 [name] 替换为 sticker 图片（如果存在）。
-   * 保持其余文本做 HTML 转义并保留换行。
-   * @param {string} text
-   * @returns {string} 安全的 html 片段
-   */
-  renderTextWithStickers(text) {
-    // 返回 DocumentFragment，包含文本节点、<br> 和 <img> 节点（带事件监听器）
-    const frag = document.createDocumentFragment();
-    if (!text) return frag;
-
-    // 只有消息完全等于一个 sticker（前后可有空白）时才视为 fixed
-    const isSingleSticker = /^\s*\[[^\]]+\]\s*$/.test(text);
-    const re = /\[([^\]]+)\]/g; // 匹配 [内容]
-    let lastIndex = 0;
-
-    const appendTextWithLineBreaks = (str) => {
-      if (!str) return;
-      const parts = str.split('\n');
-      parts.forEach((p, i) => {
-        if (p.length > 0) frag.appendChild(document.createTextNode(p));
-        if (i < parts.length - 1) frag.appendChild(document.createElement('br'));
-      });
-    };
-
-    let m;
-    while ((m = re.exec(text)) !== null) {
-      const idx = m.index;
-      const matched = m[0];
-      const name = m[1];
-      // 添加前面的普通文本（作为文本节点，避免 XSS）
-      if (idx > lastIndex) {
-        appendTextWithLineBreaks(text.slice(lastIndex, idx));
-      }
-
-      // 解析Sticker路径：兼容 [category_filename] 格式
-      // 注意：filename 可能包含中文，需正确编码且保留路径分隔符
-      const key = String(name);
-      let src;
-      
-      const underscoreIndex = key.indexOf('_');
-      if (underscoreIndex !== -1) {
-        // has category
-        const category = key.substring(0, underscoreIndex).toLowerCase();
-        const filenameFragment = key.substring(underscoreIndex + 1);
-        src = `${this.stickerDir}/${category}/${encodeURIComponent(filenameFragment)}.png`;
-      } else {
-        src = `${this.stickerDir}/${encodeURIComponent(key.toLowerCase())}.png`;
-      }
-
-      const img = document.createElement('img');
-      img.classList.add('sticker', 'sticker-loading');
-      if (isSingleSticker) img.classList.add('sticker-fixed'); else img.classList.add('sticker-inline');
-      img.src = src;
-      img.alt = `[${name}]`;
-      img.title = name;
-      img.loading = 'lazy';
-
-      // 加载完成：移除占位；若渲染后宽度超过阈值则切换到 narrow
-      const onLoad = () => {
-        img.classList.remove('sticker-loading');
-        try {
-          if (img.width > UIManager.STICKER_WIDTH_THRESHOLD) {
-            img.classList.remove('sticker-fixed');
-            img.classList.add('sticker-narrow');
-          }
-        } catch (e) {}
-        img.removeEventListener('load', onLoad);
-      };
-      img.addEventListener('load', onLoad, { once: true });
-
-      const onError = () => {
-        // 替换为原始文本（例如 [name]），避免显示浏览器的 broken image 图标
-        const replacement = document.createElement('span');
-        replacement.className = 'sticker-broken';
-        replacement.textContent = img.alt || '';
-        try { img.replaceWith(replacement); } catch (e) {
-          // fallback: hide the image
-          img.style.display = 'none';
-        }
-        // 清理事件与 src
-        try { img.src = ''; } catch (e) {}
-        img.removeEventListener('error', onError);
-      };
-      img.addEventListener('error', onError, { once: true });
-
-      frag.appendChild(img);
-      lastIndex = idx + matched.length;
-    }
-
-    // 剩余文本
-    if (lastIndex < text.length) {
-      appendTextWithLineBreaks(text.slice(lastIndex));
-    }
-
-    return frag;
-  }
 
   /**
    * 渲染语音用户列表
@@ -472,9 +373,9 @@ class UIManager {
 
     // Submit message
     chatInput.addEventListener("keydown", (event) => {
-      // 如果提及列表正在显示，按 Enter 时不发送消息（交给 handleMentionNav 处理补全）
-      if (event.key === "Enter" && this.mentionList && !this.mentionList.classList.contains('hidden')) {
-        return; // 让 handleMentionNav 处理
+      // 如果提及/贴纸列表正在显示，按 Enter 时不发送消息（交给自动补全处理）
+      if (event.key === "Enter" && this.autocomplete && this.autocomplete.isOpen()) {
+        return;
       }
       if (event.key === "Enter" && !event.shiftKey && chatInput.value.trim() !== "") {
         let message = chatInput.value.trim();
@@ -632,316 +533,6 @@ class UIManager {
     }
   }
 
-  /**
-   * 设置自动补全功能 (Mentions & Stickers)
-   * @private
-   */
-  setupAutocompleteFeature() {
-    const input = this.elements.chatInput;
-    const list = document.querySelector('#mention-list');
-    this.autocompleteList = list;
-    this.autocompleteIndex = 0;
-    this.autocompleteType = null; // 'mention' | 'sticker'
-
-    input.addEventListener('keyup', (e) => this.handleAutocompleteInput(e));
-    input.addEventListener('keydown', (e) => this.handleAutocompleteNav(e));
-    
-    // 点击其他地方关闭列表
-    document.addEventListener('click', (e) => {
-      if (!this.autocompleteList.contains(e.target) && e.target !== input) {
-        this.hideAutocompleteList();
-      }
-    });
-
-    // @ 按钮点击事件
-    try {
-      const atBtn = document.querySelector('.input-btns button[title="@"]');
-      this.atBtn = atBtn; // 保存引用，用于点击外部关闭时排除
-      if (atBtn) {
-        atBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation(); // 阻止冒泡，避免 document.click 立即关闭列表
-          this.insertAtSymbol();
-        });
-      }
-    } catch (e) {
-      console.warn('绑定@按钮失败:', e);
-    }
-  }
-
-  /**
-   * 插入 @ 符号并触发提及列表
-   */
-  insertAtSymbol() {
-    const input = this.elements.chatInput;
-    if (!input) return;
-
-    const val = input.value || '';
-    const start = input.selectionStart ?? val.length;
-    const end = input.selectionEnd ?? start;
-
-    // 在光标位置插入 @
-    const before = val.slice(0, start);
-    const after = val.slice(end);
-    input.value = before + '@' + after;
-
-    // 移动光标到 @ 之后
-    const newCursorPos = start + 1;
-    input.setSelectionRange(newCursorPos, newCursorPos);
-    input.focus();
-
-    // 触发提及列表显示（空查询，显示所有用户）
-    this.handleAutocompleteInput({ target: input, key: null });
-  }
-
-  /**
-   * 获取所有已知用户（在线 + 历史消息中的用户）
-   * @returns {Array<{name: string, status: 'online'|'offline'}>}
-   */
-  getAllUsers() {
-    const onlineUsers = new Set(this.roster.map(u => u.name));
-    const allUsers = new Map();
-
-    // 1. 添加在线用户
-    this.roster.forEach(u => {
-      allUsers.set(u.name, { name: u.name, status: 'online', avatar: u.avatar, color: u.color });
-    });
-
-    // 2. 添加历史消息中的用户（作为离线用户，除非已在线）
-    this.messages.forEach(msg => {
-      if (msg.user && msg.user !== '系统' && !allUsers.has(msg.user)) {
-        const { avatar, color } = this.generateAvatar(msg.user);
-        allUsers.set(msg.user, { name: msg.user, status: 'offline', avatar, color });
-      }
-    });
-
-    return Array.from(allUsers.values());
-  }
-
-  handleAutocompleteInput(e) {
-    // 忽略导航键
-    if (e.key && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
-
-    const input = e.target;
-    // const text = input.value; 
-    // e.target might not be available if called manually, fallback to this.elements.chatInput
-    const targetInput = input || this.elements.chatInput;
-    const text = targetInput.value;
-    const cursor = targetInput.selectionStart;
-    
-    // 1. Check for Mentions (@)
-    const lastAt = text.lastIndexOf('@', cursor - 1);
-    if (lastAt !== -1) {
-      const query = text.substring(lastAt + 1, cursor);
-      if (!query.includes(' ')) {
-        this.autocompleteType = 'mention';
-        this.autocompleteStart = lastAt;
-        this.showAutocompleteList(query);
-        return;
-      }
-    }
-
-    // 2. Check for Stickers ([)
-    const lastBracket = text.lastIndexOf('[', cursor - 1);
-    if (lastBracket !== -1) {
-      const query = text.substring(lastBracket + 1, cursor);
-      // Ensure no closing bracket between [ and cursor, and no newline
-      if (!query.includes(']') && !query.includes('\n')) {
-         this.autocompleteType = 'sticker';
-         this.autocompleteStart = lastBracket;
-         this.showAutocompleteList(query);
-         return;
-      }
-    }
-
-    this.hideAutocompleteList();
-  }
-
-  handleAutocompleteNav(e) {
-    if (this.autocompleteList.classList.contains('hidden')) return;
-
-    const items = this.autocompleteList.querySelectorAll('.mention-item');
-    if (items.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      this.autocompleteIndex = (this.autocompleteIndex + 1) % items.length;
-      this.updateAutocompleteHighlight(items);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      this.autocompleteIndex = (this.autocompleteIndex - 1 + items.length) % items.length;
-      this.updateAutocompleteHighlight(items);
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      e.stopImmediatePropagation(); // 阻止同一元素上的其他监听器执行，避免触发消息发送
-      const selected = items[this.autocompleteIndex];
-      if (selected) {
-        if (this.autocompleteType === 'mention') {
-          this.completeMention(selected.dataset.name);
-        } else if (this.autocompleteType === 'sticker') {
-          this.completeSticker(selected.dataset.code);
-        }
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      this.hideAutocompleteList();
-    }
-  }
-
-  updateAutocompleteHighlight(items) {
-    items.forEach((item, idx) => {
-      if (idx === this.autocompleteIndex) {
-        item.classList.add('active');
-        item.scrollIntoView({ block: 'nearest' });
-      } else {
-        item.classList.remove('active');
-      }
-    });
-  }
-
-  showAutocompleteList(query) {
-    if (this.autocompleteType === 'mention') {
-      this.showMentionList(query);
-    } else if (this.autocompleteType === 'sticker') {
-      this.showStickerList(query);
-    }
-  }
-
-  showMentionList(query) {
-    const allUsers = this.getAllUsers();
-    const lowerQuery = query.toLowerCase();
-    
-    // 过滤并排序：在线优先，然后按名字匹配度或字母顺序
-    const matches = allUsers
-      .filter(u => u.name.toLowerCase().startsWith(lowerQuery))
-      .sort((a, b) => {
-        if (a.status !== b.status) {
-          return a.status === 'online' ? -1 : 1; // 在线优先
-        }
-        return a.name.localeCompare(b.name);
-      });
-
-    this.renderAutocompleteItems(matches, (u) => `
-      <div class="mention-item" data-name="${u.name}">
-        <span class="avatar ${u.color}" style="width:24px;height:24px;font-size:12px;line-height:24px;">${u.avatar}</span>
-        <span>${u.name}</span>
-        <div class="status-indicator" title="${u.status === 'online' ? '在线' : '离线'}"></div>
-      </div>
-    `, (item) => this.completeMention(item.dataset.name));
-  }
-
-  showStickerList(query) {
-    if (!this.stickers) return;
-    const lowerQuery = query.toLowerCase();
-
-    let matches = [];
-    const underscoreIndex = lowerQuery.indexOf('_');
-
-    if (underscoreIndex !== -1) {
-      // Method 1: Category specific search (e.g. "airi_search")
-      const categoryQuery = lowerQuery.substring(0, underscoreIndex);
-      const termQuery = lowerQuery.substring(underscoreIndex + 1);
-
-      matches = this.stickers.filter(s => {
-        // Check if category matches (exact match)
-        if (s.category.toLowerCase() !== categoryQuery) return false;
-        
-        // If just "category_", show all in that category
-        if (!termQuery) return true;
-
-        return s.searchKey.includes(termQuery) || s.label.includes(termQuery);
-      });
-    } else {
-      // Method 2: Global search across all stickers
-      matches = this.stickers.filter(s => {
-        if (!lowerQuery) return true;
-        // Search in label or pinyin/filename (searchKey)
-        return s.searchKey.includes(lowerQuery) || s.label.includes(lowerQuery);
-      });
-    }
-
-    // Limit results to prevent performance issues, but allow more for category-specific searches
-    const maxResults = underscoreIndex !== -1 ? 500 : 100;
-    matches = matches.slice(0, maxResults);
-
-    this.renderAutocompleteItems(matches, (s) => `
-      <div class="mention-item sticker-autocomplete-item" data-code="${s.code}">
-        <img src="${s.url}" class="sticker-preview" loading="lazy" />
-        <div class="sticker-info">
-           <div class="sticker-label">${s.label}</div>
-           <div class="sticker-desc">${s.category}</div>
-        </div>
-      </div>
-    `, (item) => this.completeSticker(item.dataset.code));
-  }
-
-  renderAutocompleteItems(items, templateFn, clickHandler) {
-    if (items.length === 0) {
-      this.hideAutocompleteList();
-      return;
-    }
-
-    this.autocompleteList.innerHTML = items.map((item, index) => {
-      let html = templateFn(item);
-      if (index === 0) html = html.replace('class="', 'class="active ');
-      return html;
-    }).join('');
-    
-    // 绑定点击事件
-    this.autocompleteList.querySelectorAll('.mention-item').forEach(item => {
-      item.addEventListener('click', () => clickHandler(item));
-    });
-    
-    this.autocompleteList.classList.remove('hidden');
-    this.autocompleteIndex = 0;
-  }
-
-  hideAutocompleteList() {
-    this.autocompleteList.classList.add('hidden');
-    this.autocompleteIndex = 0;
-  }
-
-  completeMention(username) {
-    const input = this.elements.chatInput;
-    const cursor = input.selectionStart;
-    const text = input.value;
-    const lastAt = text.lastIndexOf('@', cursor - 1);
-    
-    const before = text.substring(0, lastAt);
-    const after = text.substring(cursor);
-    
-    input.value = `${before}@${username} ${after}`;
-    this.hideAutocompleteList();
-    input.focus();
-    // 移动光标到补全后的位置
-    const newCursorPos = lastAt + username.length + 2; // @ + name + space
-    input.setSelectionRange(newCursorPos, newCursorPos);
-  }
-
-  completeSticker(code) {
-    const input = this.elements.chatInput;
-    const text = input.value;
-    const cursor = input.selectionStart;
-    const lastBracket = text.lastIndexOf('[', cursor - 1);
-    
-    let endReplace = cursor;
-    let suffix = text.substring(cursor);
-    
-    // If next char is ']', consume it (from auto-pairing)
-    if (suffix.startsWith(']')) {
-      suffix = suffix.substring(1);
-    }
-    
-    const before = text.substring(0, lastBracket);
-    
-    // Insert [code]
-    input.value = `${before}[${code}]${suffix}`;
-    this.hideAutocompleteList();
-    input.focus();
-    
-    const newPos = lastBracket + code.length + 2; 
-    input.setSelectionRange(newPos, newPos);
-  }
 
   /**
    * 更新用户活动时间
@@ -997,69 +588,6 @@ class UIManager {
     } catch (e) {}
     this.lastMsgTimestamp = msgObj.timestamp;
     this.renderMessages();
-  }
-
-  /**
-   * 检查消息是否提及了当前用户
-   * @param {string} text - 消息内容
-   * @returns {boolean}
-   */
-  isMentioned(text) {
-    // 假设当前用户名存储在某个地方，或者通过某种方式获取
-    // 这里暂时简单实现：如果消息包含 "@我的名字"
-    // 由于没有明确的当前用户状态，我们可能需要从 localStorage 或其他地方获取
-    // 暂时假设用户名为 localStorage 中的 'nightcord-username'
-    const myName = localStorage.getItem('nightcord-username');
-    if (!myName) return false;
-    return text.includes(`@${myName}`);
-  }
-
-  /**
-   * 渲染单条消息
-   * @param {Object} msg - 消息对象
-   * @returns {HTMLElement}
-   */
-  createMessageElement(msg) {
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'message';
-    
-    // 检查是否被提及
-    if (this.isMentioned(msg.text)) {
-      msgDiv.classList.add('mentioned');
-    }
-
-    msgDiv.innerHTML = `
-      <div class="avatar ${msg.color}">${msg.avatar}</div>
-      <div class="message-content">
-        <div class="message-header">
-          <span class="username">${msg.user}</span>
-          <span class="time">${msg.time}</span>
-        </div>
-        <div class="text">${this.formatMessageText(msg.text)}</div>
-      </div>
-    `;
-    return msgDiv;
-  }
-
-  /**
-   * 格式化消息文本（例如处理链接、提及高亮等）
-   * @param {string} text 
-   * @returns {string}
-   */
-  formatMessageText(text) {
-    // 简单的 HTML 转义防止 XSS
-    let formatted = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-      
-    // 高亮提及
-    // 匹配 @后跟非空白字符
-    formatted = formatted.replace(/(@[^\s]+)/g, '<span style="color: #7289da; background: rgba(114, 137, 218, 0.1); border-radius: 3px; padding: 0 2px;">$1</span>');
-    
-    return formatted;
   }
 
   /**
@@ -1119,6 +647,29 @@ class UIManager {
   clearRoster() {
     this.roster = [];
     this.renderVoiceUsers();
+  }
+
+  /**
+   * 获取所有已知用户（在线 + 历史消息中的用户）
+   * @returns {Array<{name: string, status: 'online'|'offline'}>}
+   */
+  getAllUsers() {
+    const allUsers = new Map();
+
+    // 1. 添加在线用户
+    this.roster.forEach(u => {
+      allUsers.set(u.name, { name: u.name, status: 'online', avatar: u.avatar, color: u.color });
+    });
+
+    // 2. 添加历史消息中的用户（作为离线用户，除非已在线）
+    this.messages.forEach(msg => {
+      if (msg.user && msg.user !== '系统' && !allUsers.has(msg.user)) {
+        const { avatar, color } = this.generateAvatar(msg.user);
+        allUsers.set(msg.user, { name: msg.user, status: 'offline', avatar, color });
+      }
+    });
+
+    return Array.from(allUsers.values());
   }
 
   /**
@@ -1202,7 +753,9 @@ class UIManager {
     if (msg.text) {
       const p = document.createElement('p');
       p.className = 'message-text';
-      const frag = this.renderTextWithStickers(msg.text);
+      const frag = this.stickerService
+        ? this.stickerService.renderTextWithStickers(msg.text)
+        : document.createTextNode(msg.text);
       p.appendChild(frag);
       contentDiv.appendChild(p);
     }
@@ -1211,27 +764,6 @@ class UIManager {
     msgDiv.appendChild(contentDiv);
     
     return msgDiv;
-  }
-
-  /**
-   * 格式化消息文本（例如处理链接、提及高亮等）
-   * @param {string} text 
-   * @returns {string}
-   */
-  formatMessageText(text) {
-    // 简单的 HTML 转义防止 XSS
-    let formatted = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-      
-    // 高亮提及
-    // 匹配 @后跟非空白字符
-    formatted = formatted.replace(/(@[^\s]+)/g, '<span style="color: #7289da; background: rgba(114, 137, 218, 0.1); border-radius: 3px; padding: 0 2px;">$1</span>');
-    
-    return formatted;
   }
 
   /**

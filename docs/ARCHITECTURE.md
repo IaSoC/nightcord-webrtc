@@ -44,13 +44,14 @@
   ┌───────────────┐ ┌────────────────┐ ┌────────────┐
   │  UIManager    │ │ NightcordMgr   │ │ EventBus   │
   │  (UI 层)      │ │ (业务逻辑层)    │ │ (事件总线) │
-  └───────────────┘ └──────┬─────────┘ └────────────┘
-                             │
-                             ▼
-                    ┌─────────────────┐
-                    │ WebSocketMgr    │
-                    │ (网络通信层)     │
-                    └─────────────────┘
+  └───────┬───────┘ └──────┬─────────┘ └────────────┘
+          │                │
+          ▼                ▼
+  ┌───────────────┐  ┌─────────────────┐
+  │ UI 子模块      │  │ WebSocketMgr    │
+  │ (Autocomplete,│  │ (网络通信层)     │
+  │ StickerService)│  └─────────────────┘
+  └───────────────┘
 ```
 
 ### 依赖关系
@@ -61,6 +62,9 @@ ChatApplication
   ├── NightcordManager (依赖 EventBus)
   │   └── WebSocketManager (内部使用)
   └── UIManager (依赖 EventBus)
+      ├── StickerService (贴纸解析与加载)
+      ├── AutocompleteManager (自动补全控制)
+      └── StorageManager (存储访问)
 ```
 
 ---
@@ -74,7 +78,9 @@ ChatApplication
 - **EventBus**: 只负责事件的发布和订阅
 - **WebSocketManager**: 只负责 WebSocket 连接管理
 - **NightcordManager**: 只负责聊天室业务逻辑
-- **UIManager**: 只负责 UI 渲染和用户交互
+- **UIManager**: 作为 UI 层主控，负责视图协调
+- **StickerService**: 专门负责贴纸数据的加载与渲染
+- **AutocompleteManager**: 专门负责 @提及与贴纸自动补全逻辑
 - **Nightcord**: 只负责协调各个管理器
 
 ### 2. 开放封闭原则 (OCP)

@@ -8,6 +8,8 @@
 - [WebSocketManager](#websocketmanager) - WebSocket 管理器
 - [ChatRoomManager](#chatroommanager) - 聊天室管理器
 - [UIManager](#uimanager) - UI 管理器
+- [StickerService](#stickerservice) - 贴纸服务
+- [AutocompleteManager](#autocompletemanager) - 自动补全管理器
 - [ChatApplication](#chatapplication) - 主应用类
 
 ## NightcordManager
@@ -533,6 +535,70 @@ if (ui.isScrolledToBottom()) {
   console.log('在底部');
 }
 ```
+
+---
+
+## StickerService
+
+贴纸服务，负责贴纸数据的加载与渲染。
+
+### 构造函数
+
+```javascript
+const stickerService = new StickerService({
+  stickerDir: 'https://sticker.nightcord.de5.net/stickers',
+  widthThreshold: 180
+});
+```
+
+### 方法
+
+#### `loadAutocompleteData(url)`
+
+加载贴纸自动补全数据。
+
+**参数：**
+- `url` (string) - JSON 数据地址
+
+**返回值：** `Promise<Array>`
+
+#### `renderTextWithStickers(text)`
+
+将文本中的贴纸代码渲染为图片节点。
+
+**参数：**
+- `text` (string) - 待渲染文本
+
+**返回值：** `DocumentFragment`
+
+---
+
+## AutocompleteManager
+
+自动补全管理器，处理 @提及与贴纸自动补全。
+
+### 构造函数
+
+```javascript
+const autocomplete = new AutocompleteManager({
+  input: messageInputEl,
+  list: mentionListEl,
+  getAllUsers: () => users,
+  getStickers: () => stickers
+});
+```
+
+### 方法
+
+#### `isOpen()`
+
+检查补全列表是否正打开。
+
+**返回值：** `boolean`
+
+#### `insertAtSymbol()`
+
+在输入框光标处插入 @ 并触发提及列表。
 
 ---
 

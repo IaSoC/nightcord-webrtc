@@ -19,7 +19,10 @@
 ├── event-bus.js              # 事件总线
 ├── websocket-mgr.js          # WebSocket 管理器
 ├── nightcord-mgr.js          # 聊天室管理器（NightcordManager）
-├── ui-manager.js             # UI 管理器
+├── storage-manager.js        # 本地存储管理器
+├── ui-manager.js             # UI 管理器（主控）
+├── ui-sticker-service.js     # UI 贴纸服务（贴纸渲染与数据）
+├── ui-autocomplete.js        # UI 自动补全（@提及与贴纸补全）
 ├── nightcord.js              # 主应用类（Nightcord）
 ├── index.html                # HTML 入口文件
 ├── docs/API.md               # API 文档
@@ -77,7 +80,10 @@ Nightcord (应用协调器)
   ├── EventBus (事件总线)
   ├── NightcordManager (业务逻辑)
   │   └── WebSocketManager (网络通信)
-  └── UIManager (UI 渲染)
+  └── UIManager (UI 渲染主控)
+      ├── StickerService (贴纸解析与加载)
+      └── AutocompleteManager (自动补全控制)
+      └── StorageManager (存储访问)
 ```
 
 ### 核心类
@@ -115,7 +121,7 @@ chatRoom.sendMessage('As always, at 25:00.');
 ```
 
 #### UIManager
-UI 管理器，处理所有 DOM 操作和用户交互。
+UI 管理器，作为 UI 层的主控类，协调 DOM 操作、用户交互以及各个 UI 子模块。
 
 ```javascript
 const ui = new UIManager(eventBus);
@@ -124,6 +130,12 @@ ui.setupChatRoom((message) => {
   console.log('发送消息:', message);
 });
 ```
+
+#### StickerService
+贴纸服务模块，负责贴纸数据的异步加载、缓存以及将消息文本渲染为带图片的 DOM 片段。
+
+#### AutocompleteManager
+自动补全管理器，处理输入框中的 `@` 提及用户和 `[` 贴纸指令的实时建议与补全输入。
 
 #### Nightcord
 主应用类（Nightcord），协调各个管理器。
