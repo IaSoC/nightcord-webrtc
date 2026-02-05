@@ -24,13 +24,20 @@ class Nightcord {
   init(roomname) {
     this.state.phase = 'name-choosing';
     
-    let storedName = localStorage.getItem('nightcord-username');
-    if (!storedName) {
-      storedName = window.prompt("请输入用户名：");
-      localStorage.setItem('nightcord-username', storedName);
+    // 尝试从 localStorage 获取已保存的用户名
+    const storedName = localStorage.getItem('nightcord-username');
+    
+    if (storedName) {
+      // 如果已有用户名，直接加入房间
+      this.chatRoom.setUser(storedName);
+      this.joinRoom(roomname || 'nightcord-default');
+    } else {
+      // 如果没有用户名，设置用户名选择器
+      this.ui.setupNameChooser((username) => {
+        this.chatRoom.setUser(username);
+        this.joinRoom(roomname || 'nightcord-default');
+      });
     }
-    this.chatRoom.setUser(storedName);
-    this.joinRoom(roomname || 'nightcord-default');
   }
 
   /**

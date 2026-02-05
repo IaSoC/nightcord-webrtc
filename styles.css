@@ -442,3 +442,190 @@ body {
 .message.mentioned:hover {
   background: rgba(250, 166, 26, 0.15);
 }
+
+/* Name Chooser Overlay - Redesigned */
+.name-chooser {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(20, 20, 25, 0.92);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 0.4s ease-out;
+}
+
+.name-chooser.hidden {
+  display: none;
+}
+
+.name-chooser-content {
+  background: #2b2633;
+  border-radius: 24px;
+  padding: 48px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transform: translateY(0);
+  animation: slideUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.logo-area {
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.logo-area svg {
+  filter: drop-shadow(0 0 10px rgba(138, 123, 206, 0.4));
+  animation: float 6s ease-in-out infinite;
+}
+
+.name-chooser-content h2 {
+  margin: 0 0 8px 0;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.subtitle {
+  margin: 0 0 32px 0;
+  color: #b9bbbe;
+  font-size: 14px;
+}
+
+.input-wrapper {
+  position: relative;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.name-input {
+  width: 100%;
+  padding: 16px 20px;
+  background-color: #1e1b24;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.name-input::placeholder {
+  color: #6a6f7a;
+}
+
+.name-input:focus {
+  background-color: #1e1b24;
+  border-color: #7289da;
+  box-shadow: 0 0 0 3px rgba(114, 137, 218, 0.15);
+}
+
+.name-submit {
+  width: 100%;
+  padding: 16px;
+  background: #5865f2;
+  border: none;
+  border-radius: 12px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  outline: none;
+}
+
+.name-submit:hover {
+  background: #4752c4;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 15px rgba(88, 101, 242, 0.3);
+}
+
+.name-submit:active {
+  transform: translateY(0);
+  background: #3c45a5;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-6px); }
+  100% { transform: translateY(0px); }
+}
+
+.input-error {
+  color: #ed4245;
+  font-size: 13px;
+  margin-top: 8px;
+  min-height: 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  text-align: left;
+  font-weight: 500;
+}
+
+.input-error.visible {
+  opacity: 1;
+}
+
+.name-input.error {
+  border-color: #ed4245;
+  box-shadow: 0 0 0 3px rgba(237, 66, 69, 0.15); /* matching default focus style but red */
+}
+.name-input.error:focus {
+  border-color: #ed4245;
+}
+
+.name-chooser-content {
+  position: relative; /* For absolute positioning of close button */
+  /* ... existing styles ... */
+}
+
+.chooser-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: #b9bbbe;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.chooser-close:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.chooser-close.hidden {
+  display: none;
+}

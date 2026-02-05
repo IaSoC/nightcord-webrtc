@@ -181,11 +181,173 @@ class UIManager {
   }
 
   /**
-   * 设置用户名选择器
+   * 初始化/显示用户名选择器
+   * @param {Object} options -配置选项
+   * @param {string} [options.mode='init'] - 模式: 'init' | 'change'
+   * @param {string} [options.currentName=''] - 当前用户名（修改模式下使用）
+   * @param {Function} callback - 成功时的回调函数 (username) => void
+   */
+  showNameChooser(options, callback) {
+    const { mode = 'init', currentName = '' } = options;
+    const { nameInput } = this.elements;
+    const nameChooser = document.querySelector('#name-chooser');
+    const nameSubmit = document.querySelector('#name-submit');
+    const nameError = document.querySelector('#name-error');
+    
+    // Elements for dynamic text
+    const titleEl = document.querySelector('#chooser-title');
+    const subtitleEl = document.querySelector('#chooser-subtitle');
+    const submitTextEl = document.querySelector('#chooser-submit-text');
+    const closeBtn = document.querySelector('#chooser-close');
+    
+    if (!nameInput || !nameChooser) return;
+
+    // Reset UI state
+    nameInput.classList.remove('error');
+    if (nameError) {
+      nameError.classList.remove('visible');
+      nameError.textContent = '';
+    }
+
+    // Configure UI based on mode
+    if (mode === 'change') {
+      titleEl.textContent = '修改昵称';
+      subtitleEl.textContent = '想要换个新名字吗？';
+      submitTextEl.textContent = '确认修改';
+      closeBtn.classList.remove('hidden');
+      nameInput.value = currentName;
+    } else {
+      titleEl.textContent = 'Nightcord';
+      subtitleEl.textContent = '请输入你的昵称以加入';
+      submitTextEl.textContent = '进入 Nightcord';
+      closeBtn.classList.add('hidden');
+      
+      // Load saved username only in init mode
+      try {
+        const savedUsername = localStorage.getItem('nightcord-username');
+        if (savedUsername) nameInput.value = savedUsername;
+      } catch (e) {}
+    }
+
+    // Show Dialog
+    nameChooser.classList.remove('hidden');
+    setTimeout(() => nameInput.focus(), 100);
+
+    // Save callback for the event handler
+    this.pendingNameCallback = callback;
+    this.nameChooserMode = mode;
+    
+    // Bind events only once
+    if (!this.nameChooserEventsBound) {
+      this.bindNameChooserEvents();
+      this.nameChooserEventsBound = true;
+    }
+  }
+
+  bindNameChooserEvents() {
+    const { nameInput } = this.elements;
+    const nameChooser = document.querySelector('#name-chooser');
+    const nameSubmit = document.querySelector('#name-submit');
+    const nameError = document.querySelector('#name-error');
+    const closeBtn = document.querySelector('#chooser-close');
+
+    const closeDialog = () => {
+      nameChooser.classList.add('hidden');
+      nameInput.blur();
+    };
+
+    const showInputError = (msg) => {
+      if (nameError) {
+        nameError.textContent = msg;
+        nameError.classList.add('visible');
+      }
+      nameInput.classList.add('error');
+      // Animation
+      const content = document.querySelector('.name-chooser-content');
+      if (content) {
+        content.animate([
+          { transform: 'translateX(0)' }, { transform: 'translateX(-10px)' },
+          { transform: 'translateX(10px)' }, { transform: 'translateX(-10px)' },
+          { transform: 'translateX(10px)' }, { transform: 'translateX(0)' }
+        ], { duration: 400, easing: 'ease-in-out' });
+      }
+    };
+    
+    const clearInputError = () => {
+      if (nameError) nameError.classList.remove('visible');
+      nameInput.classList.remove('error');
+    };
+
+    const submit = () => {
+      const username = nameInput.value.trim();
+      const currentMode = this.nameChooserMode || 'init';
+      
+      if (!username) {
+        showInputError('请输入昵称');
+        nameInput.focus();
+        return;
+      }
+      
+      if (username.length > 32) {
+        showInputError('昵称太长了，请控制在 32 个字符以内');
+        nameInput.focus();
+        return;
+      }
+
+      // Save to localStorage
+      try {
+        localStorage.setItem('nightcord-username', username);
+      } catch (e) {
+        console.warn('Failed to save username to localStorage:', e);
+      }
+
+      closeDialog();
+      
+      if (this.pendingNameCallback) {
+        this.pendingNameCallback(username);
+      }
+    };
+
+    // Events
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submit();
+      } else {
+        clearInputError();
+      }
+    });
+
+    nameInput.addEventListener('input', clearInputError);
+
+    if (nameSubmit) {
+      nameSubmit.addEventListener('click', (e) => {
+        e.preventDefault();
+        submit();
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeDialog();
+      });
+    }
+
+    // Click outside to close (only in change mode)
+    nameChooser.addEventListener('click', (e) => {
+      if (this.nameChooserMode === 'change' && e.target === nameChooser) {
+        closeDialog();
+      }
+    });
+  }
+
+  /**
+   * 设置用户名选择器 (兼容旧接口，用于初始化)
    * @param {Function} callback - 用户名选择回调函数
    */
   setupNameChooser(callback) {
-    // TODO: Implement name chooser setup
+    this.showNameChooser({ mode: 'init' }, callback);
   }
 
   setCurrentRoom(roomname) {
@@ -296,14 +458,15 @@ class UIManager {
         div.style.cursor = 'pointer';
         div.title = '点击修改你的昵称';
         div.addEventListener('click', () => {
-          const newName = window.prompt('请输入新的昵称', user.name);
-          if (newName && newName !== user.name) {
-            localStorage.setItem('nightcord-username', newName);
-            // 通知业务逻辑层
-            if (this.onSetUser) {
-              this.onSetUser(newName);
+          this.showNameChooser({ mode: 'change', currentName: user.name }, (newName) => {
+            if (newName && newName !== user.name) {
+              // localStorage set is handled in showNameChooser/submit
+              // 通知业务逻辑层
+              if (this.onSetUser) {
+                this.onSetUser(newName);
+              }
             }
-          }
+          });
         });
       }
       this.elements.roster.appendChild(div);

@@ -9,6 +9,38 @@
 </head>
 
 <body>
+  <!-- Name Chooser Overlay -->
+  <div id="name-chooser" class="name-chooser hidden">
+    <div class="name-chooser-content">
+      <div class="logo-area">
+        <svg width="60" height="60" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13,10.69v2.72H10.23V10.69Zm3,0v2.69h2.69V10.72ZM23.29,12A11.31,11.31,0,1,1,12,.67,11.31,11.31,0,0,1,23.29,12Zm-.18.07a8.87,8.87,0,1,0-8.87,8.86A8.87,8.87,0,0,0,23.11,12.05Z" fill="#ffffff" fill-opacity="0.9"></path>
+        </svg>
+      </div>
+      <h2 id="chooser-title">Nightcord</h2>
+      <p id="chooser-subtitle" class="subtitle">请输入你的昵称以加入</p>
+      
+      <div class="input-wrapper">
+        <input type="text" id="name-input" class="name-input" placeholder="昵称" maxlength="32" autocomplete="off">
+        <div class="input-focus-border"></div>
+        <div id="name-error" class="input-error"></div>
+      </div>
+      
+      <button id="name-submit" class="name-submit">
+        <span id="chooser-submit-text">进入 Nightcord</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+      
+      <button id="chooser-close" class="chooser-close hidden" title="关闭">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
   <div class="chat-root">
     <!-- Sidebar -->
     <div class="sidebar">
