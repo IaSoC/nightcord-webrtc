@@ -1,5 +1,17 @@
 # Nightcord
 
+<div align="center">
+
+![GitHub License](https://img.shields.io/github/license/bili-47177171806/nightcord?style=flat-square&color=884499)
+![GitHub stars](https://img.shields.io/github/stars/bili-47177171806/nightcord?style=flat-square&color=884499)
+![GitHub forks](https://img.shields.io/github/forks/bili-47177171806/nightcord?style=flat-square&color=884499)
+![GitHub issues](https://img.shields.io/github/issues/bili-47177171806/nightcord?style=flat-square&color=884499)
+![GitHub last commit](https://img.shields.io/github/last-commit/bili-47177171806/nightcord?style=flat-square&color=884499)
+![GitHub repo size](https://img.shields.io/github/repo-size/bili-47177171806/nightcord?style=flat-square&color=884499)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/bili-47177171806/nightcord?style=flat-square&color=884499)](https://www.codefactor.io/repository/github/bili-47177171806/nightcord)
+
+</div>
+
 一个采用现代化、模块化架构设计的实时聊天应用。
 
 ## ✨ 特性
