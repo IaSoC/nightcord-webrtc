@@ -549,45 +549,85 @@ class UIManager {
    * @param {string} [color='bg-default'] - 头像背景颜色
    */
   addChatMessage(user, message, timestamp, avatar, color) {
-    // 系统消息不存本地
     if (user === '系统') {
-      const { name, avatar: userAvatar, color: userColor } = this.generateAvatar(user);
-      this.messages.push({
-        user: name,
-        avatar: avatar ?? userAvatar,
-        color: color ?? userColor,
-        time: timestamp ? this.formatDate(timestamp) : new Date().toLocaleTimeString(),
-        text: message,
-        timestamp: timestamp || Date.now()
-      });
-      this.renderMessages();
-      return;
+      this.addSystemMessage(message, timestamp, avatar, color);
+    } else {
+      this.addUserMessage(user, message, timestamp, avatar, color);
     }
-    const { name, avatar: userAvatar, color: userColor } = this.generateAvatar(user);
+  }
+
+  /**
+   * 添加系统消息（不保存到本地存储）
+   * @private
+   */
+  addSystemMessage(message, timestamp, avatar, color) {
+    const messageData = this.createMessageData('系统', message, timestamp, avatar, color);
+    this.messages.push(messageData);
+    this.renderMessages();
+  }
+
+  /**
+   * 添加用户消息（保存到本地存储）
+   * @private
+   */
+  addUserMessage(user, message, timestamp, avatar, color) {
+    const messageData = this.createMessageData(user, message, timestamp, avatar, color);
+    this.messages.push(messageData);
+    
     const msgObj = {
-      user: name,
+      user: messageData.user,
       text: message,
-      timestamp: timestamp || Date.now()
+      timestamp: messageData.timestamp
     };
-    this.messages.push({
+    
+    this.saveMessageToStorage(msgObj);
+    this.lastMsgTimestamp = msgObj.timestamp;
+    this.renderMessages();
+  }
+
+  /**
+   * 创建消息数据对象
+   * @private
+   */
+  createMessageData(user, message, timestamp, avatar, color) {
+    const { name, avatar: userAvatar, color: userColor } = this.generateAvatar(user);
+    return {
       user: name,
       avatar: avatar ?? userAvatar,
       color: color ?? userColor,
       time: timestamp ? this.formatDate(timestamp) : new Date().toLocaleTimeString(),
       text: message,
-      timestamp: msgObj.timestamp
-    });
-    // 保存到 localStorage（按房间存储，只存 user/text/timestamp）
+      timestamp: timestamp || Date.now()
+    };
+  }
+
+  /**
+   * 保存消息到本地存储
+   * @private
+   */
+  saveMessageToStorage(msgObj) {
     try {
       const room = this.currentRoom || 'nightcord-default';
-      let localMsgs = this.storage ? this.storage.loadMessages(room) : (this.loadLocalMessages(room) || []);
+      let localMsgs = this.storage 
+        ? this.storage.loadMessages(room) 
+        : (this.loadLocalMessages(room) || []);
+      
       localMsgs.push(msgObj);
-      if (localMsgs.length > 2000) localMsgs = localMsgs.slice(localMsgs.length - 2000);
-      if (this.storage) this.storage.saveMessages(room, localMsgs); else this.saveLocalMessages(room, localMsgs);
-      if (this.storage) this.storage.setLastMsgTimestamp(room, msgObj.timestamp); else this.setLastMsgTimestamp(room, msgObj.timestamp);
-    } catch (e) {}
-    this.lastMsgTimestamp = msgObj.timestamp;
-    this.renderMessages();
+      
+      if (localMsgs.length > 2000) {
+        localMsgs = localMsgs.slice(localMsgs.length - 2000);
+      }
+      
+      if (this.storage) {
+        this.storage.saveMessages(room, localMsgs);
+        this.storage.setLastMsgTimestamp(room, msgObj.timestamp);
+      } else {
+        this.saveLocalMessages(room, localMsgs);
+        this.setLastMsgTimestamp(room, msgObj.timestamp);
+      }
+    } catch (e) {
+      // 静默失败，存储错误不应影响消息显示
+    }
   }
 
   /**
