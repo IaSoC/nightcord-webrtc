@@ -9,7 +9,7 @@
     constructor({ stickerDir, widthThreshold, fetcher } = {}) {
       this.stickerDir = stickerDir || 'https://sticker.nightcord.de5.net/stickers';
       this.widthThreshold = Number.isFinite(widthThreshold) ? widthThreshold : 180;
-      this.fetcher = fetcher || fetch;
+      this.fetcher = fetcher || fetch.bind(window);
       this.stickers = [];
     }
 
