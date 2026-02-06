@@ -95,7 +95,14 @@ class VoiceRoomManagerPeerJS {
       const peerId = `${this.roomname}-${this.username}-${Date.now()}`.replace(/[^a-zA-Z0-9-]/g, '_');
 
       this.peer = new Peer(peerId, {
-        debug: 0
+        debug: 0,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ],
+          sdpSemantics: 'unified-plan' // Use unified-plan to avoid track muting issues
+        }
       });
 
       this.peer.on('open', (id) => {
@@ -104,8 +111,18 @@ class VoiceRoomManagerPeerJS {
 
         this.peer.on('call', (call) => {
           console.log('Receiving call from:', call.peer);
+          // Answer the call with our local stream immediately
           call.answer(this.localStream);
-          this.handleIncomingCall(call);
+
+          // Important: Set up stream handler BEFORE answering
+          let streamReceived = false;
+          call.on('stream', (remoteStream) => {
+            if (streamReceived) return;
+            streamReceived = true;
+
+            console.log('Stream received in call handler');
+            this.handleIncomingCall(call, remoteStream);
+          });
         });
 
         resolve();
@@ -123,25 +140,51 @@ class VoiceRoomManagerPeerJS {
     });
   }
 
-  handleIncomingCall(call) {
-    call.on('stream', (remoteStream) => {
-      // Try to get username from peer ID
-      const username = this.getPeerIdUsername(call.peer);
-      if (username) {
-        console.log(`Received stream from ${username}`);
-        this.remoteStreams.set(username, remoteStream);
-        this.calls.set(username, call);
-        this.eventBus.emit('voice:stream-added', {
-          username,
-          stream: remoteStream
-        });
+  handleIncomingCall(call, remoteStream) {
+    console.log('Handling incoming call from:', call.peer);
 
-        // Show remote video if available
-        if (remoteStream.getVideoTracks().length > 0 && window.showVideo) {
-          window.showVideo(remoteStream, username, false);
-        }
-      }
+    // Get username from peer ID
+    const username = this.getPeerIdUsername(call.peer);
+    console.log(`Received stream from peer ${call.peer}, username: ${username}`);
+
+    if (!username) {
+      console.warn('Could not find username for peer:', call.peer);
+      return;
+    }
+
+    console.log('Stream details:', {
+      id: remoteStream.id,
+      active: remoteStream.active,
+      tracks: remoteStream.getTracks().map(t => ({
+        kind: t.kind,
+        id: t.id,
+        enabled: t.enabled,
+        muted: t.muted,
+        readyState: t.readyState,
+        label: t.label
+      }))
     });
+
+    this.remoteStreams.set(username, remoteStream);
+    this.calls.set(username, call);
+    this.eventBus.emit('voice:stream-added', {
+      username,
+      stream: remoteStream
+    });
+
+    // Show video immediately
+    const videoTrack = remoteStream.getVideoTracks()[0];
+    if (videoTrack && window.showVideo) {
+      console.log(`Showing video for ${username} (muted: ${videoTrack.muted})`);
+      window.showVideo(remoteStream, username, false);
+
+      // Also listen for unmute
+      if (videoTrack.muted) {
+        videoTrack.onunmute = () => {
+          console.log(`Video track unmuted for ${username}`);
+        };
+      }
+    }
 
     call.on('close', () => {
       const username = this.getPeerIdUsername(call.peer);
@@ -299,21 +342,67 @@ class VoiceRoomManagerPeerJS {
     if (!this.localStream || !this.peer) return;
 
     console.log(`Calling ${username} at ${peerId}`);
+    console.log('Local stream tracks:', this.localStream.getTracks().map(t => `${t.kind}: ${t.enabled}`));
 
     const call = this.peer.call(peerId, this.localStream);
     this.calls.set(username, call);
 
+    let streamHandled = false; // Prevent duplicate stream handling
+
     call.on('stream', (remoteStream) => {
+      if (streamHandled) {
+        console.log('Stream already handled for', username);
+        return;
+      }
+      streamHandled = true;
+
       console.log(`Received stream from ${username}`);
+      console.log('Stream details:', {
+        id: remoteStream.id,
+        active: remoteStream.active,
+        tracks: remoteStream.getTracks().map(t => ({
+          kind: t.kind,
+          id: t.id,
+          enabled: t.enabled,
+          muted: t.muted,
+          readyState: t.readyState,
+          label: t.label
+        }))
+      });
+
       this.remoteStreams.set(username, remoteStream);
       this.eventBus.emit('voice:stream-added', {
         username,
         stream: remoteStream
       });
 
-      // Show remote video if available
-      if (remoteStream.getVideoTracks().length > 0 && window.showVideo) {
-        window.showVideo(remoteStream, username, false);
+      // Check if video track is muted and wait for it to unmute
+      const videoTrack = remoteStream.getVideoTracks()[0];
+      if (videoTrack) {
+        if (videoTrack.muted) {
+          console.log(`Video track is muted for ${username}, waiting for unmute...`);
+          videoTrack.onunmute = () => {
+            console.log(`Video track unmuted for ${username}, showing video now`);
+            if (window.showVideo) {
+              window.showVideo(remoteStream, username, false);
+            }
+          };
+          // Also set a timeout to show video anyway after 2 seconds
+          setTimeout(() => {
+            if (window.showVideo) {
+              console.log(`Showing video for ${username} after timeout`);
+              window.showVideo(remoteStream, username, false);
+            }
+          }, 2000);
+        } else {
+          // Video track is not muted, show immediately
+          if (window.showVideo) {
+            console.log(`Showing video for ${username}`);
+            window.showVideo(remoteStream, username, false);
+          }
+        }
+      } else {
+        console.log(`No video tracks for ${username}`);
       }
     });
 

@@ -218,13 +218,69 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const video = videoBox.querySelector('video');
+
+      // Set srcObject
       video.srcObject = stream;
+
+      // Monitor track unmute events
+      stream.getTracks().forEach(track => {
+        console.log(`Track ${track.kind} for ${username}: muted=${track.muted}, enabled=${track.enabled}`);
+
+        track.onunmute = () => {
+          console.log(`Track ${track.kind} unmuted for ${username}`);
+          if (track.kind === 'video') {
+            // Try to play again when video unmutes
+            video.play().catch(err => console.error('Play error:', err));
+          }
+        };
+
+        track.onmute = () => {
+          console.log(`Track ${track.kind} muted for ${username}`);
+        };
+
+        track.onended = () => {
+          console.log(`Track ${track.kind} ended for ${username}`);
+        };
+      });
+
+      // Wait for video to be ready
+      video.onloadedmetadata = () => {
+        console.log(`Video metadata loaded for ${username}`);
+        video.play().then(() => {
+          console.log(`Video playing for ${username}`, {
+            readyState: video.readyState,
+            paused: video.paused,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight
+          });
+        }).catch(err => {
+          console.error(`Error playing video for ${username}:`, err);
+        });
+      };
+
+      // Also try to play immediately
+      video.play().catch(err => {
+        console.log(`Initial play failed for ${username}, waiting for metadata:`, err.message);
+      });
+
+      console.log(`Video element setup for ${username}:`, {
+        srcObject: video.srcObject,
+        readyState: video.readyState,
+        paused: video.paused,
+        muted: video.muted,
+        tracks: stream.getTracks().map(t => `${t.kind}: ${t.readyState}`)
+      });
     };
 
     window.removeVideo = function(username) {
       const videoId = `video-${username.replace(/[^a-zA-Z0-9]/g, '_')}`;
       const videoBox = document.getElementById(videoId);
       if (videoBox) {
+        const video = videoBox.querySelector('video');
+        if (video && video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+        }
         videoBox.remove();
       }
     };
