@@ -13,7 +13,7 @@ class Nightcord {
     this.ui = new UIManager(this.eventBus);
 
     // Initialize voice chat managers
-    this.voiceRoom = new VoiceRoomManagerPeerJS(this.eventBus, this.chatRoom.wsManager);
+    this.voiceRoom = new VoiceRoomManagerSimple(this.eventBus, this.chatRoom.wsManager);
     this.voiceUI = new VoiceUIManager(this.eventBus);
 
     // Setup voice UI event handlers
