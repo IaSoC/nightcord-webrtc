@@ -206,10 +206,19 @@ class NightcordManager {
           isPrivate: this.roomname.length === 64
         });
       }
+    } else if (data.message && data.message.startsWith('[VOICE:')) {
+      this.eventBus.emit('message:received', {
+        name: data.name,
+        message: data.message,
+        timestamp: data.timestamp
+      });
+      if (data.timestamp > this.lastSeenTimestamp) {
+        this.lastSeenTimestamp = data.timestamp;
+      }
     } else if (data.timestamp > this.lastSeenTimestamp) {
       this.lastSeenTimestamp = data.timestamp;
-      this.eventBus.emit('message:received', { 
-        name: data.name, 
+      this.eventBus.emit('message:received', {
+        name: data.name,
         message: data.message,
         timestamp: data.timestamp
       });

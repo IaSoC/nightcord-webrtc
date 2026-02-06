@@ -30,21 +30,21 @@ class WebRTCManager {
   constructor(config = {}) {
     this.remoteUsername = config.remoteUsername;
     this.localStream = config.localStream;
+    this.trickleIce = config.trickleIce !== false;
+    this.maxCandidates = typeof config.maxCandidates === 'number' ? config.maxCandidates : 4;
+    this.iceServers = Array.isArray(config.iceServers) && config.iceServers.length > 0
+      ? config.iceServers
+      : [{ urls: 'stun:stun.l.google.com:19302' }];
+    this.iceCandidatePoolSize = Number.isInteger(config.iceCandidatePoolSize)
+      ? config.iceCandidatePoolSize
+      : 0;
 
     // Callbacks
     this.onIceCandidate = config.onIceCandidate || (() => {});
     this.onTrack = config.onTrack || (() => {});
+    this.onRemoteStream = config.onRemoteStream || (() => {}); // Alias for onTrack
     this.onConnectionStateChange = config.onConnectionStateChange || (() => {});
     this.onIceConnectionStateChange = config.onIceConnectionStateChange || (() => {});
-
-    // Free STUN servers for NAT traversal
-    this.iceServers = [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' }
-    ];
 
     this.peerConnection = null;
     this.remoteStream = new MediaStream();
@@ -58,7 +58,8 @@ class WebRTCManager {
    */
   _initPeerConnection() {
     const config = {
-      iceServers: this.iceServers
+      iceServers: this.iceServers,
+      iceCandidatePoolSize: this.iceCandidatePoolSize
     };
 
     this.peerConnection = new RTCPeerConnection(config);
@@ -72,7 +73,7 @@ class WebRTCManager {
 
     // Handle ICE candidates
     this.peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
+      if (event.candidate && this.trickleIce) {
         this.onIceCandidate(event.candidate);
       }
     };
@@ -83,6 +84,7 @@ class WebRTCManager {
         this.remoteStream.addTrack(track);
       });
       this.onTrack(this.remoteStream);
+      this.onRemoteStream(this.remoteStream); // Also call onRemoteStream
     };
 
     // Monitor connection state
@@ -116,7 +118,8 @@ class WebRTCManager {
         offerToReceiveVideo: false
       });
       await this.peerConnection.setLocalDescription(offer);
-      return offer;
+      await this._waitForIceGatheringComplete();
+      return this._compactDescription(this.peerConnection.localDescription || offer);
     } catch (error) {
       console.error(`[WebRTC] Error creating offer for ${this.remoteUsername}:`, error);
       throw error;
@@ -131,7 +134,8 @@ class WebRTCManager {
     try {
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      return answer;
+      await this._waitForIceGatheringComplete();
+      return this._compactDescription(this.peerConnection.localDescription || answer);
     } catch (error) {
       console.error(`[WebRTC] Error creating answer for ${this.remoteUsername}:`, error);
       throw error;
@@ -180,6 +184,55 @@ class WebRTCManager {
       console.error(`[WebRTC] Error adding ICE candidate from ${this.remoteUsername}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Wait for ICE gathering to complete (non-trickle mode).
+   * @private
+   */
+  _waitForIceGatheringComplete(timeoutMs = 1000) {
+    if (!this.peerConnection) return Promise.resolve();
+    if (this.peerConnection.iceGatheringState === 'complete') return Promise.resolve();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        this.peerConnection.removeEventListener('icegatheringstatechange', onStateChange);
+        resolve();
+      }, timeoutMs);
+
+      const onStateChange = () => {
+        if (this.peerConnection.iceGatheringState === 'complete' && !settled) {
+          settled = true;
+          clearTimeout(timer);
+          this.peerConnection.removeEventListener('icegatheringstatechange', onStateChange);
+          resolve();
+        }
+      };
+
+      this.peerConnection.addEventListener('icegatheringstatechange', onStateChange);
+    });
+  }
+
+  /**
+   * Compact SDP by limiting candidate lines to reduce signaling size.
+   * @private
+   */
+  _compactDescription(desc) {
+    if (!desc || !desc.sdp || this.maxCandidates < 0) return desc;
+    const lines = desc.sdp.split('\r\n');
+    let candidateCount = 0;
+    const compactLines = lines.filter((line) => {
+      if (line.startsWith('a=candidate:')) {
+        candidateCount += 1;
+        return candidateCount <= this.maxCandidates;
+      }
+      return true;
+    });
+    const sdp = compactLines.join('\r\n');
+    return { type: desc.type, sdp };
   }
 
   /**
@@ -254,6 +307,19 @@ class WebRTCManager {
   }
 
   /**
+   * 添加本地音频流（用于后期添加）
+   * @param {MediaStream} stream - 本地音频流
+   */
+  addLocalStream(stream) {
+    if (!this.peerConnection || !stream) return;
+
+    this.localStream = stream;
+    stream.getTracks().forEach(track => {
+      this.peerConnection.addTrack(track, stream);
+    });
+  }
+
+  /**
    * 获取远程音频流
    * @returns {MediaStream} 远程音频流
    */
@@ -286,5 +352,3 @@ class WebRTCManager {
     return state === 'connected' || state === 'connecting';
   }
 }
-
-export default WebRTCManager;

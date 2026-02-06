@@ -13,17 +13,38 @@ class Nightcord {
     this.ui = new UIManager(this.eventBus);
 
     // Initialize voice chat managers
-    this.voiceRoom = new VoiceRoomManager({
-      eventBus: this.eventBus,
-      webSocketManager: this.chatRoom.webSocketManager
-    });
+    this.voiceRoom = new VoiceRoomManagerPeerJS(this.eventBus, this.chatRoom.wsManager);
     this.voiceUI = new VoiceUIManager(this.eventBus);
+
+    // Setup voice UI event handlers
+    this._setupVoiceEventHandlers();
 
     // Application state
     this.state = {
       phase: 'name-choosing', // name-choosing, chatting
       voiceEnabled: config.voiceEnabled !== false // Voice chat enabled by default
     };
+  }
+
+  /**
+   * 设置语音事件处理器
+   * @private
+   */
+  _setupVoiceEventHandlers() {
+    // Handle voice join request from UI
+    this.eventBus.on('voice:join-request', () => {
+      this.joinVoice();
+    });
+
+    // Handle voice leave request from UI
+    this.eventBus.on('voice:leave-request', () => {
+      this.leaveVoice();
+    });
+
+    // Handle mute request from UI
+    this.eventBus.on('voice:mute-request', () => {
+      this.toggleMute();
+    });
   }
 
   /**
@@ -55,7 +76,7 @@ class Nightcord {
   joinRoom(roomname) {
     this.state.phase = 'chatting';
     // this.ui.hideRoomChooser();
-    
+
     const success = this.chatRoom.joinRoom(roomname);
     if (success) {
       this.ui.setCurrentRoom(this.chatRoom.roomname);
@@ -64,6 +85,15 @@ class Nightcord {
       }, (username) => {
         this.chatRoom.setUser(username);
       });
+
+      // Initialize voice UI in sidebar
+      if (this.state.voiceEnabled) {
+        const sidebarContent = document.querySelector('.sidebar-content');
+        if (sidebarContent) {
+          this.voiceUI.init(sidebarContent);
+          this.voiceUI.setLocalUsername(this.chatRoom.username);
+        }
+      }
     }
   }
 
@@ -135,14 +165,14 @@ class Nightcord {
   /**
    * 加入语音聊天
    */
-  async joinVoice() {
+  async joinVoice(options = {}) {
     if (!this.state.voiceEnabled) {
       console.warn('Voice chat is disabled');
       return false;
     }
 
     try {
-      await this.voiceRoom.joinVoice();
+      await this.voiceRoom.joinVoiceChat(this.chatRoom.username, this.chatRoom.roomname, options);
       return true;
     } catch (error) {
       console.error('Failed to join voice chat:', error);
@@ -154,7 +184,7 @@ class Nightcord {
    * 离开语音聊天
    */
   leaveVoice() {
-    this.voiceRoom.leaveVoice();
+    this.voiceRoom.leaveVoiceChat();
   }
 
   /**
@@ -168,7 +198,12 @@ class Nightcord {
    * 销毁应用实例
    */
   destroy() {
-    this.voiceRoom.destroy();
+    if (this.voiceUI) {
+      this.voiceUI.destroy();
+    }
+    if (this.voiceRoom) {
+      this.voiceRoom.destroy();
+    }
     this.chatRoom.leave();
     this.eventBus.clear();
   }
