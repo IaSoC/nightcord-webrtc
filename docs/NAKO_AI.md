@@ -49,9 +49,9 @@ Nako: 关你什么事...
 
 ## 功能特性
 
-### 1. 流式输出
+### 1. 普通输出
 
-- **调用者体验**：输入问题后，立即看到 Nako 的流式回复（打字效果）
+- **调用者体验**：输入问题后，等待 Nako 完整回复后一次性显示
 - **其他用户体验**：看到完整的 Nako 回复
 
 ### 2. 消息标记
@@ -65,13 +65,22 @@ Nako 的消息在服务器端使用 `[Nako]` 前缀标记，前端会自动识�
 
 ### 3. 去重机制
 
-调用者本地显示流式输出后，会收到服务器广播的完整消息。系统会自动去重，避免重复显示。
+调用者本地显示完整输出后，会收到服务器广播的完整消息。系统会自动去重，避免重复显示。
 
 ### 4. 上下文管理
 
 - Nako 默认会携带最近 15 条对话历史
 - 使用 `/clear` 命令可以清除上下文，下次对话将不携带历史消息
 - 清除上下文后，Nako 会像第一次对话一样回复
+- 清除状态会持久化保存，刷新页面后仍然有效
+- 只有再次执行 `/clear` 才会重新开始记录历史
+
+### 5. 思考过程显示
+
+- Nako 的回复会显示一个思考图标（💭）（仅桌面端）
+- 将鼠标悬停在图标上可以查看 Nako 的推理过程
+- 思考过程仅在本地显示，不会发送给其他用户
+- 移动端不显示思考图标，以保持界面简洁
 
 ## 技术实现
 
@@ -94,30 +103,23 @@ Nightcord (应用协调器)
 
 ### 消息流程
 
-#### 流式模式（默认）
+#### 普通模式（当前）
 
 1. 用户输入 `@Nako 问题`
 2. 前端先广播用户的问题（所有人看到）
 3. UIManager 检测到 Nako 触发，发出 `nako:ask` 事件
-4. Nightcord 获取当前用户 ID 和最近 10 条对话历史
-5. NakoAIService 调用 Nako API（传入 userId、history 和 stream: true）
-6. API 返回 SSE 流式响应
-7. NakoAIService 实时接收 SSE 数据，发出 `nako:stream:chunk` 事件
-8. UIManager 监听事件，实时更新显示（调用者看到真正的打字效果）
+4. Nightcord 获取当前用户 ID 和最近 15 条对话历史
+5. NakoAIService 调用 Nako API（传入 userId、history 和 stream: false）
+6. API 返回完整 JSON 响应
+7. NakoAIService 接收完整响应，发出 `nako:stream:chunk` 事件（包含完整内容）
+8. UIManager 监听事件，一次性显示完整消息
 9. 完成后，UIManager 通过 WebSocket 发送 `[Nako]完整回复`
 10. 服务器广播给所有用户
 11. 调用者自动去重，其他用户看到完整消息
 
-#### 非流式模式
-
-1-5. 同上
-6. API 返回完整 JSON 响应
-7. NakoAIService 模拟流式输出，逐字发出 `nako:stream:chunk` 事件
-8-11. 同上
-
 ### API 格式
 
-#### 流式模式（默认，推荐）
+#### 普通模式（当前）
 
 **请求**：
 
@@ -128,7 +130,7 @@ Content-Type: application/json
 {
   "userId": "UserA",
   "message": "今天天气真好啊",
-  "stream": true,
+  "stream": false,
   "history": [
     {
       "userId": "UserB",
@@ -144,57 +146,13 @@ Content-Type: application/json
 }
 ```
 
-**响应**（SSE 流式）：
-
-```
-Content-Type: text/event-stream
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":411,"completion_tokens":0}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"reasoning_content":"思考过程..."},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":413,"completion_tokens":2}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":"哈"},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":642,"completion_tokens":231}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":"？"},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":643,"completion_tokens":232}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":"有"},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":644,"completion_tokens":233}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":"事"},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":645,"completion_tokens":234}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":"？"},"logprobs":null,"finish_reason":null}],"usage":{"prompt_tokens":411,"total_tokens":646,"completion_tokens":235}}
-
-data: {"id":"chatcmpl-xxx","object":"chat.completion.chunk","created":1770659494,"model":"@cf/qwen/qwen3-30b-a3b-fp8","choices":[{"index":0,"delta":{"content":""},"logprobs":null,"finish_reason":"stop"}],"usage":{"prompt_tokens":411,"total_tokens":652,"completion_tokens":241}}
-
-data: [DONE]
-```
-
-**格式说明**：
-- `delta.reasoning_content`：思考过程（前端忽略，不显示）
-- `delta.content`：最终输出内容（前端显示）
-- `finish_reason: "stop"`：表示生成完成
-- `data: [DONE]`：流结束标记
-
-#### 非流式模式
-
-**请求**：
-
-```json
-POST https://nako.nightcord.de5.net/api/chat
-Content-Type: application/json
-
-{
-  "userId": "UserA",
-  "message": "今天天气真好啊",
-  "history": []
-}
-```
-
 **响应**（JSON）：
 
 ```json
 {
   "success": true,
   "response": "哼,天气好又怎样...",
+  "reasoningContent": "用户在评论天气，我应该保持 Nako 的傲娇性格回应...",
   "usage": {
     "promptTokens": 245,
     "completionTokens": 42,
@@ -204,9 +162,10 @@ Content-Type: application/json
 ```
 
 **注意**：
-- 流式模式：实时接收 SSE 流，真正的打字效果
-- 非流式模式：等待完整响应，前端模拟打字效果
-- `history` 包含最近 10 条对话记录
+- 普通模式：等待完整响应，一次性显示
+- `response`：Nako 的回复内容
+- `reasoningContent`：Nako 的思考过程（可选，前端会显示为思考图标）
+- `history` 包含最近 15 条对话记录
 - `isBot` 标记是否是 Nako 的消息
 
 ### 代码位置
@@ -230,8 +189,7 @@ Content-Type: application/json
 
 ```javascript
 const app = new Nightcord({
-  nakoApiUrl: 'https://your-api.com/api/chat',
-  nakoStream: true  // 启用流式（默认）
+  nakoApiUrl: 'https://your-api.com/api/chat'
 });
 app.init();
 ```
@@ -240,18 +198,6 @@ app.init();
 
 ```javascript
 this.apiUrl = config.apiUrl || 'https://your-api.com/api/chat';
-this.stream = config.stream !== false; // 默认启用流式
-```
-
-### 禁用流式模式
-
-如果 API 不支持流式，可以禁用：
-
-```javascript
-const app = new Nightcord({
-  nakoStream: false  // 禁用流式，使用模拟打字效果
-});
-app.init();
 ```
 
 ### 修改触发命令

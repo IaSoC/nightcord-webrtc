@@ -17,7 +17,7 @@ class Nightcord {
       eventBus: this.eventBus,
       apiUrl: config.nakoApiUrl || 'https://nako.nightcord.de5.net/api/chat',
       nakoName: config.nakoName || 'Nako',
-      stream: config.nakoStream !== false // 默认启用流式
+      stream: false // 禁用流式输出
     });
 
     // Nako 上下文清除时间戳（只获取此时间戳之后的消息）

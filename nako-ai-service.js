@@ -106,13 +106,16 @@ class NakoAIService {
       }
 
       let fullContent = '';
+      let fullReasoning = ''; // 思考过程
       let usage = null;
 
       // 检查是否是流式响应
       const contentType = response.headers.get('content-type');
       if (this.stream && contentType && contentType.includes('text/event-stream')) {
         // 真正的 SSE 流式响应
-        fullContent = await this.processSSEStream(response, messageId);
+        const result = await this.processSSEStream(response, messageId);
+        fullContent = result.content;
+        fullReasoning = result.reasoning;
       } else if (contentType && contentType.includes('application/json')) {
         // 非流式 JSON 响应
         const data = await response.json();
@@ -121,14 +124,20 @@ class NakoAIService {
         }
 
         fullContent = data.response || '';
+        fullReasoning = data.reasoningContent || ''; // 提取思考过程
         usage = data.usage;
 
         if (!fullContent.trim()) {
           throw new Error('Nako 返回了空响应');
         }
 
-        // 模拟流式输出（逐字显示）
-        await this.simulateStream(messageId, fullContent);
+        // 不模拟流式输出，直接发送完整内容
+        // 发出开始事件（用于创建消息元素）
+        this.eventBus.emit('nako:stream:chunk', {
+          messageId,
+          chunk: fullContent,
+          timestamp: Date.now()
+        });
       } else {
         throw new Error('未知的响应格式');
       }
@@ -142,6 +151,7 @@ class NakoAIService {
         messageId,
         user: this.nakoName,
         fullContent,
+        reasoning: fullReasoning, // 传递思考过程
         usage,
         timestamp: Date.now()
       });
@@ -223,6 +233,7 @@ class NakoAIService {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
+    let fullReasoning = ''; // 收集完整的思考过程
     let buffer = ''; // 缓冲区，用于处理不完整的数据
 
     while (true) {
@@ -259,9 +270,14 @@ class NakoAIService {
               const choice = json.choices[0];
               const delta = choice.delta || {};
 
-              // 优先使用 content（最终输出），忽略 reasoning_content（思考过程）
-              const text = delta.content || '';
+              // 收集思考过程（reasoning_content）
+              const reasoning = delta.reasoning_content || '';
+              if (reasoning) {
+                fullReasoning += reasoning;
+              }
 
+              // 收集最终输出（content）
+              const text = delta.content || '';
               if (text) {
                 fullContent += text;
 
@@ -285,7 +301,8 @@ class NakoAIService {
       }
     }
 
-    return fullContent;
+    // 返回内容和思考过程
+    return { content: fullContent, reasoning: fullReasoning };
   }
 
   /**

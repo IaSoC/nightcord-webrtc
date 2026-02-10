@@ -937,3 +937,26 @@ body {
     width: 32px !important;
   }
 }
+
+/* Nako 思考图标样式 */
+.nako-thinking-icon {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 14px;
+  cursor: help;
+  opacity: 0.5;
+  transition: opacity 0.2s, transform 0.2s;
+  vertical-align: middle;
+}
+
+.nako-thinking-icon:hover {
+  opacity: 0.9;
+  transform: scale(1.15);
+}
+
+/* 移动端隐藏思考图标 */
+@media screen and (max-width: 768px) {
+  .nako-thinking-icon {
+    display: none;
+  }
+}

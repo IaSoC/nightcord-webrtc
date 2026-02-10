@@ -230,6 +230,7 @@ class UIManager {
     this.eventBus.on('nako:stream:end', (data) => {
       // 去掉开头和结尾的换行符
       const cleanContent = data.fullContent.trim();
+      const reasoning = data.reasoning || ''; // 思考过程
 
       // 标记为本地已显示，用于去重
       this.localNakoMessages.set(cleanContent, {
@@ -238,7 +239,7 @@ class UIManager {
       });
 
       // 完成流式显示
-      this.finishStreamingMessage(data.messageId, data.user, cleanContent);
+      this.finishStreamingMessage(data.messageId, data.user, cleanContent, reasoning);
 
       // 通过 WebSocket 发送给所有人（带 [Nako] 标记）
       if (this.onSendMessage) {
@@ -670,8 +671,9 @@ class UIManager {
    * @param {string} messageId - 消息 ID
    * @param {string} user - 用户名
    * @param {string} fullContent - 完整内容
+   * @param {string} reasoning - 思考过程
    */
-  finishStreamingMessage(messageId, user, fullContent) {
+  finishStreamingMessage(messageId, user, fullContent, reasoning = '') {
     // 移除流式标记，但保留消息元素
     const msgDiv = this.elements.chatlog.querySelector(`[data-message-id="${messageId}"]`);
     if (msgDiv) {
@@ -692,6 +694,18 @@ class UIManager {
           );
         } else {
           textElement.textContent = cleanContent;
+        }
+      }
+
+      // 如果有思考过程，在昵称旁边添加思考图标（仅桌面端显示）
+      if (reasoning && reasoning.trim()) {
+        const headerDiv = msgDiv.querySelector('.message-header');
+        if (headerDiv) {
+          const thinkingIcon = document.createElement('span');
+          thinkingIcon.className = 'nako-thinking-icon';
+          thinkingIcon.textContent = '💭';
+          thinkingIcon.title = reasoning.trim();
+          headerDiv.appendChild(thinkingIcon);
         }
       }
     }
