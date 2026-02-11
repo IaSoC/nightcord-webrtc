@@ -12,12 +12,37 @@ class Nightcord {
     });
     this.ui = new UIManager(this.eventBus);
 
+    // 初始化 SEKAI Pass OAuth 客户端（需要在 Nako 之前初始化）
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    this.sekaiPassAuth = new SekaiPassAuth({
+      clientId: 'nightcord_client',
+      redirectUri: isLocalDev ? window.location.origin : `${window.location.origin}/auth/callback`,
+      onAuthExpired: () => {
+        console.log('授权已过期，正在重新登录...');
+        setTimeout(() => {
+          this.sekaiPassAuth.login();
+        }, 1000);
+      }
+    });
+
     // 初始化 Nako AI 服务
     this.nakoService = new NakoAIService({
       eventBus: this.eventBus,
       apiUrl: config.nakoApiUrl || 'https://nako.nightcord.de5.net/api/chat',
       nakoName: config.nakoName || 'Nako',
-      stream: false // 禁用流式输出
+      stream: false, // 禁用流式输出
+      getAccessToken: async () => {
+        // 如果用户已登录 SEKAI Pass，返回 access token
+        if (this.sekaiPassAuth.isAuthenticated()) {
+          try {
+            return await this.sekaiPassAuth.getAccessToken();
+          } catch (error) {
+            console.warn('Failed to get access token for Nako:', error);
+            return null;
+          }
+        }
+        return null;
+      }
     });
 
     // Nako 上下文清除时间戳（只获取此时间戳之后的消息）
@@ -60,21 +85,6 @@ class Nightcord {
    */
   init(roomname) {
     this.state.phase = 'name-choosing';
-
-    // 初始化 SEKAI Pass OAuth 客户端
-    // 本地开发时使用根路径作为回调地址
-    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    this.sekaiPassAuth = new SekaiPassAuth({
-      clientId: 'nightcord_client',
-      redirectUri: isLocalDev ? window.location.origin : `${window.location.origin}/auth/callback`,
-      onAuthExpired: () => {
-        // 授权过期时自动重新登录
-        console.log('授权已过期，正在重新登录...');
-        setTimeout(() => {
-          this.sekaiPassAuth.login();
-        }, 1000);
-      }
-    });
 
     // 初始化 SEKAI Analytics（事件上报服务）
     this.analytics = new SekaiAnalytics({

@@ -34,6 +34,7 @@ class NakoAIService {
    * @param {string} [config.nakoName] - Nako 显示名称
    * @param {number} [config.timeout] - 请求超时时间（毫秒）
    * @param {boolean} [config.stream] - 是否使用流式输出
+   * @param {Function} [config.getAccessToken] - 获取 access token 的函数
    */
   constructor(config = {}) {
     this.eventBus = config.eventBus || new EventBus();
@@ -41,6 +42,7 @@ class NakoAIService {
     this.nakoName = config.nakoName || 'Nako';
     this.timeout = config.timeout || 60000; // 60秒超时
     this.stream = config.stream !== false; // 默认启用流式
+    this.getAccessToken = config.getAccessToken; // 获取 access token 的函数
 
     // 跟踪正在进行的请求
     this.activeRequests = new Map(); // messageId -> AbortController
@@ -84,12 +86,28 @@ class NakoAIService {
         abortController.abort();
       }, this.timeout);
 
+      // 准备请求头
+      const headers = {
+        'Content-Type': 'application/json',
+      };
+
+      // 如果提供了 getAccessToken 函数，添加 Authorization 头
+      if (this.getAccessToken) {
+        try {
+          const accessToken = await this.getAccessToken();
+          if (accessToken) {
+            headers['Authorization'] = `Bearer ${accessToken}`;
+          }
+        } catch (error) {
+          console.warn('Failed to get access token:', error);
+          // 继续请求，让服务器返回 401 错误
+        }
+      }
+
       // 调用 API
       const response = await fetch(this.apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify({
           userId: userId,
           message: prompt.trim(),
