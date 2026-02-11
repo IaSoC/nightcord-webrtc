@@ -4,12 +4,13 @@
  */
 (function (global) {
   class SekaiPassAuth {
-    constructor({ clientId, redirectUri, authEndpoint, tokenEndpoint, userInfoEndpoint } = {}) {
+    constructor({ clientId, redirectUri, authEndpoint, tokenEndpoint, userInfoEndpoint, onAuthExpired } = {}) {
       this.clientId = clientId || 'nightcord_client';
       this.redirectUri = redirectUri || `${window.location.origin}/auth/callback`;
       this.authEndpoint = authEndpoint || 'https://id.nightcord.de5.net/oauth/authorize';
       this.tokenEndpoint = tokenEndpoint || 'https://id.nightcord.de5.net/oauth/token';
       this.userInfoEndpoint = userInfoEndpoint || 'https://id.nightcord.de5.net/oauth/userinfo';
+      this.onAuthExpired = onAuthExpired; // 授权过期回调
 
       this.storagePrefix = 'sekai_pass_';
     }
@@ -166,30 +167,110 @@
     }
 
     /**
-     * 获取用户信息
+     * 刷新 access token
      */
-    async getUserInfo() {
+    async refreshToken() {
+      const refreshToken = localStorage.getItem(`${this.storagePrefix}refresh_token`);
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
+
+      try {
+        const tokenResponse = await fetch(this.tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+            client_id: this.clientId
+          })
+        });
+
+        if (!tokenResponse.ok) {
+          const errorData = await tokenResponse.json();
+          // 如果 refresh token 也失效了，清理所有数据并触发重新登录
+          if (errorData.error === 'invalid_grant') {
+            console.log('Refresh token expired, triggering re-authentication...');
+            this.logout();
+
+            // 触发授权过期回调
+            if (this.onAuthExpired) {
+              this.onAuthExpired();
+            }
+          }
+          throw new Error(`Token refresh failed: ${errorData.error}`);
+        }
+
+        const tokens = await tokenResponse.json();
+
+        // 更新 tokens
+        localStorage.setItem(`${this.storagePrefix}access_token`, tokens.access_token);
+        if (tokens.refresh_token) {
+          // OAuth 2.1 支持 refresh token 轮换
+          localStorage.setItem(`${this.storagePrefix}refresh_token`, tokens.refresh_token);
+        }
+        localStorage.setItem(`${this.storagePrefix}expires_at`, Date.now() + tokens.expires_in * 1000);
+
+        return tokens.access_token;
+      } catch (error) {
+        console.error('Token refresh failed:', error);
+        throw error;
+      }
+    }
+
+    /**
+     * 获取有效的 access token（自动刷新）
+     */
+    async getAccessToken() {
       const accessToken = localStorage.getItem(`${this.storagePrefix}access_token`);
-      if (!accessToken) {
+      const expiresAt = localStorage.getItem(`${this.storagePrefix}expires_at`);
+
+      if (!accessToken || !expiresAt) {
         throw new Error('Not authenticated');
       }
 
-      const response = await fetch(this.userInfoEndpoint, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
+      // 如果 token 已过期或即将过期（5 分钟内），自动刷新
+      const now = Date.now();
+      const expiresAtTime = parseInt(expiresAt);
+      const fiveMinutes = 5 * 60 * 1000;
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch user info');
+      if (now >= expiresAtTime || (expiresAtTime - now) < fiveMinutes) {
+        console.log('Access token expired or expiring soon, refreshing...');
+        return await this.refreshToken();
       }
 
-      const userInfo = await response.json();
+      return accessToken;
+    }
 
-      // 保存用户信息到 localStorage
-      localStorage.setItem(`${this.storagePrefix}user`, JSON.stringify(userInfo));
+    /**
+     * 获取用户信息
+     */
+    async getUserInfo() {
+      try {
+        const accessToken = await this.getAccessToken();
 
-      return userInfo;
+        const response = await fetch(this.userInfoEndpoint, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch user info');
+        }
+
+        const userInfo = await response.json();
+
+        // 保存用户信息到 localStorage
+        localStorage.setItem(`${this.storagePrefix}user`, JSON.stringify(userInfo));
+
+        return userInfo;
+      } catch (error) {
+        console.error('Failed to get user info:', error);
+        throw error;
+      }
     }
 
     /**

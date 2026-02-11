@@ -66,7 +66,14 @@ class Nightcord {
     const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     this.sekaiPassAuth = new SekaiPassAuth({
       clientId: 'nightcord_client',
-      redirectUri: isLocalDev ? window.location.origin : `${window.location.origin}/auth/callback`
+      redirectUri: isLocalDev ? window.location.origin : `${window.location.origin}/auth/callback`,
+      onAuthExpired: () => {
+        // 授权过期时自动重新登录
+        console.log('授权已过期，正在重新登录...');
+        setTimeout(() => {
+          this.sekaiPassAuth.login();
+        }, 1000);
+      }
     });
 
     // 初始化 SEKAI Analytics（事件上报服务）

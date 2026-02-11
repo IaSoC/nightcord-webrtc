@@ -106,9 +106,6 @@
         return;
       }
 
-      const accessToken = localStorage.getItem('sekai_pass_access_token');
-      if (!accessToken) return;
-
       const event = {
         project: 'nightcord',
         event_type: eventType,
@@ -116,6 +113,9 @@
       };
 
       try {
+        // 使用自动刷新的 getAccessToken 方法
+        const accessToken = await this.sekaiPassAuth.getAccessToken();
+
         const response = await fetch(`${this.apiUrl}/user/events`, {
           method: 'POST',
           headers: {
