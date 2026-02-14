@@ -118,6 +118,8 @@ class Nightcord {
     if (storedName) {
       // 如果已有用户名，直接加入房间
       this.chatRoom.setUser(storedName);
+      // 保存 SEKAI Pass 回调，改昵称时可用
+      this.ui.sekaiPassLoginCallback = () => this.sekaiPassAuth.login();
       this.joinRoom(roomname || 'nightcord-default');
     } else {
       // 如果没有用户名，设置用户名选择器

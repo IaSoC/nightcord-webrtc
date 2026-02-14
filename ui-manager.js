@@ -455,6 +455,8 @@ class UIManager {
    * @param {Function} callback - 用户名选择回调函数
    */
   setupNameChooser(callback, sekaiPassCallback) {
+    // 持久保存 SEKAI Pass 回调，改昵称时也能用
+    this.sekaiPassLoginCallback = sekaiPassCallback;
     this.showNameChooser({ mode: 'init' }, callback, sekaiPassCallback);
   }
 
@@ -574,7 +576,7 @@ class UIManager {
                 this.onSetUser(newName);
               }
             }
-          });
+          }, this.sekaiPassLoginCallback);
         });
       }
       this.elements.roster.appendChild(div);
