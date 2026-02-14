@@ -214,10 +214,19 @@ class NightcordManager {
       let isNakoMessage = false;
       let senderName = data.name;
 
-      if (message.startsWith('[Nako]')) {
-        isNakoMessage = true;
-        message = message.slice(6); // 去掉 [Nako] 前缀
-        senderName = 'Nako'; // Nako 消息的发送者应该是 Nako，而不是转发者
+      // 检测 AI 人设标记（如 [Nako], [Asagi] 等）
+      // 定义已知的 AI 人设列表
+      const aiPersonas = ['Nako', 'Asagi', 'Miku'];
+      let aiPersona = null;
+
+      for (const persona of aiPersonas) {
+        if (message.startsWith(`[${persona}]`)) {
+          isNakoMessage = true;
+          aiPersona = persona;
+          message = message.slice(persona.length + 2); // 去掉 [Persona] 前缀
+          senderName = persona; // AI 消息的发送者应该是 AI 本身，而不是转发者
+          break;
+        }
       }
 
       this.eventBus.emit('message:received', {

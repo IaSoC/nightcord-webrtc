@@ -241,9 +241,9 @@ class UIManager {
       // 完成流式显示
       this.finishStreamingMessage(data.messageId, data.user, cleanContent, reasoning);
 
-      // 通过 WebSocket 发送给所有人（带 [Nako] 标记）
+      // 通过 WebSocket 发送给所有人（带人设标记，如 [Nako] 或 [Asagi]）
       if (this.onSendMessage) {
-        this.onSendMessage(`[Nako]${cleanContent}`);
+        this.onSendMessage(`[${data.user}]${cleanContent}`);
       }
 
       // 5秒后清理去重标记（防止内存泄漏）

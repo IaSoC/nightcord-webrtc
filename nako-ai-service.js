@@ -68,6 +68,9 @@ class NakoAIService {
 
     const { userId = 'Anonymous', history = [], persona } = options;
 
+    // 根据 persona 确定显示名称
+    const displayName = this.getPersonaDisplayName(persona);
+
     const messageId = `nako_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const abortController = new AbortController();
     this.activeRequests.set(messageId, abortController);
@@ -75,7 +78,7 @@ class NakoAIService {
     // 发出开始事件
     this.eventBus.emit('nako:stream:start', {
       messageId,
-      user: this.nakoName,
+      user: displayName,
       prompt,
       userId,
       timestamp: Date.now()
@@ -176,7 +179,7 @@ class NakoAIService {
       // 发出完成事件
       this.eventBus.emit('nako:stream:end', {
         messageId,
-        user: this.nakoName,
+        user: displayName,
         fullContent,
         reasoning: fullReasoning, // 传递思考过程
         usage,
@@ -451,5 +454,20 @@ class NakoAIService {
       timeout: this.timeout,
       activeRequests: this.activeRequests.size
     };
+  }
+
+  /**
+   * 根据 persona 获取显示名称
+   * @param {string} persona - 人设标识
+   * @returns {string} 显示名称
+   */
+  getPersonaDisplayName(persona) {
+    const personaMap = {
+      'nako': 'Nako',
+      'asagi': 'Asagi',
+      'miku': 'Miku'
+    };
+
+    return personaMap[persona] || this.nakoName;
   }
 }
