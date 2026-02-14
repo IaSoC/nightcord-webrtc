@@ -54,6 +54,7 @@ class NakoAIService {
    * @param {Object} options - 可选参数
    * @param {string} options.userId - 用户 ID
    * @param {Array} options.history - 对话历史
+   * @param {string} options.persona - 人设名称（如 "nako", "asagi"）
    * @returns {Promise<string>} 完整回复内容
    * @fires nako:stream:start
    * @fires nako:stream:chunk
@@ -65,7 +66,7 @@ class NakoAIService {
       throw new Error('问题不能为空');
     }
 
-    const { userId = 'Anonymous', history = [] } = options;
+    const { userId = 'Anonymous', history = [], persona } = options;
 
     const messageId = `nako_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const abortController = new AbortController();
@@ -104,8 +105,16 @@ class NakoAIService {
         }
       }
 
-      // 调用 API
-      const response = await fetch(this.apiUrl, {
+      // 调用 API（支持 persona 参数）
+      let apiUrl = this.apiUrl;
+      if (persona) {
+        // 添加 persona 查询参数
+        const url = new URL(this.apiUrl);
+        url.searchParams.set('persona', persona);
+        apiUrl = url.toString();
+      }
+
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({

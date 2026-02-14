@@ -59,7 +59,7 @@ class Nightcord {
       this.saveNakoClearTimestamp(this.nakoClearTimestamp);
     });
 
-    // 监听 Nako 调用请求
+    // 监听 AI 调用请求（支持多人设）
     this.eventBus.on('nako:ask', (data) => {
       // 获取当前用户名
       const userId = this.chatRoom.username || 'Anonymous';
@@ -67,10 +67,11 @@ class Nightcord {
       // 获取对话历史（最近 15 条消息，只获取清除时间戳之后的）
       const history = this.getRecentHistory(15);
 
-      // 调用 Nako
+      // 调用 AI（传递 persona 参数）
       this.nakoService.ask(data.prompt, {
         userId: userId,
-        history: history
+        history: history,
+        persona: data.persona || 'nako' // 默认使用 nako
       });
     });
 

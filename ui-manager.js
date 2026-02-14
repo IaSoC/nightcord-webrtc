@@ -796,29 +796,55 @@ class UIManager {
           return;
         }
 
-        // 检测 Nako AI 触发
-        // 支持：@Nako 问题、/nako 问题、句中包含 @Nako
+        // 检测 AI 触发
+        // 支持：@Nako、@Asagi、/nako、/asagi 等
         const nakoMention = message.match(/@Nako/i);
         const nakoCommand = message.match(/^\/nako\s+(.+)/i);
+        const asagiMention = message.match(/@Asagi/i);
+        const asagiCommand = message.match(/^\/asagi\s+(.+)/i);
 
-        if (nakoMention || nakoCommand) {
+        // 统一处理 AI 调用
+        if (nakoMention || nakoCommand || asagiMention || asagiCommand) {
           event.preventDefault();
 
           let prompt = '';
+          let persona = null; // 人设名称
+          let aiName = ''; // AI 显示名称
 
           if (nakoCommand) {
-            // /nako 命令：提取命令后的内容
+            // /nako 命令
             prompt = nakoCommand[1];
+            persona = 'nako';
+            aiName = 'Nako';
+          } else if (asagiCommand) {
+            // /asagi 命令
+            prompt = asagiCommand[1];
+            persona = 'asagi';
+            aiName = 'Asagi';
           } else if (message.startsWith('@Nako ')) {
-            // @Nako 开头：提取 @Nako 后的内容
+            // @Nako 开头
             prompt = message.replace(/^@Nako\s+/i, '');
-          } else {
-            // 句中提及：使用整句话作为 prompt
+            persona = 'nako';
+            aiName = 'Nako';
+          } else if (message.startsWith('@Asagi ')) {
+            // @Asagi 开头
+            prompt = message.replace(/^@Asagi\s+/i, '');
+            persona = 'asagi';
+            aiName = 'Asagi';
+          } else if (nakoMention) {
+            // 句中提及 @Nako
             prompt = message;
+            persona = 'nako';
+            aiName = 'Nako';
+          } else if (asagiMention) {
+            // 句中提及 @Asagi
+            prompt = message;
+            persona = 'asagi';
+            aiName = 'Asagi';
           }
 
           if (!prompt.trim()) {
-            this.showError('请输入要问 Nako 的问题');
+            this.showError(`请输入要问 ${aiName} 的问题`);
             return;
           }
 
@@ -830,8 +856,11 @@ class UIManager {
             onSendMessage(message);
           }
 
-          // 触发 Nako 调用事件（由 NakoAIService 处理）
-          this.eventBus.emit('nako:ask', { prompt: prompt.trim() });
+          // 触发 AI 调用事件（传递 persona 参数）
+          this.eventBus.emit('nako:ask', {
+            prompt: prompt.trim(),
+            persona: persona
+          });
 
           return;
         }
