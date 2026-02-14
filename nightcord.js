@@ -74,6 +74,16 @@ class Nightcord {
       });
     });
 
+    // 上下线音效（优先 Opus，回退 MP3）
+    const canOpus = new Audio().canPlayType('audio/ogg; codecs=opus');
+    const ext = canOpus ? 'opus' : 'mp3';
+    this.sounds = {
+      join: new Audio(`se_cord.${ext}`),
+      quit: new Audio(`se_dcord.${ext}`)
+    };
+    this.eventBus.on('user:joined', () => this.sounds.join.cloneNode().play().catch(() => {}));
+    this.eventBus.on('user:quit', () => this.sounds.quit.cloneNode().play().catch(() => {}));
+
     // Application state
     this.state = {
       phase: 'name-choosing' // name-choosing, chatting
