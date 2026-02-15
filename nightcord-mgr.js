@@ -2,19 +2,19 @@
  * NightcordManager - 聊天室管理器
  * 负责处理聊天室的业务逻辑，包括用户管理、消息处理、房间管理等
  * 完全独立于 UI 层，通过事件总线与外部通信
- * 
+ *
  * @example
  * const eventBus = new EventBus();
- * const chatRoom = new NightcordManager({ 
+ * const chatRoom = new NightcordManager({
  *   hostname: 'example.com',
- *   eventBus 
+ *   eventBus
  * });
- * 
+ *
  * // 监听事件
  * eventBus.on('message:received', (data) => {
  *   console.log(`${data.name}: ${data.message}`);
  * });
- * 
+ *
  * // 使用管理器
  * chatRoom.setUser('K');
  * chatRoom.joinRoom('nightcord-default');
@@ -215,8 +215,8 @@ class NightcordManager {
       let senderName = data.name;
 
       // 检测 AI 人设标记（如 [Nako], [Asagi] 等）
-      // 定义已知的 AI 人设列表
-      const aiPersonas = ['Nako', 'Asagi', 'Miku'];
+      // 使用统一配置获取 AI 人设列表
+      const aiPersonas = window.AIConfig.getAllDisplayNames();
       let aiPersona = null;
 
       for (const persona of aiPersonas) {

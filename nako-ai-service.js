@@ -462,12 +462,7 @@ class NakoAIService {
    * @returns {string} 显示名称
    */
   getPersonaDisplayName(persona) {
-    const personaMap = {
-      'nako': 'Nako',
-      'asagi': 'Asagi',
-      'miku': 'Miku'
-    };
-
-    return personaMap[persona] || this.nakoName;
+    // 使用统一配置获取显示名称
+    return window.AIConfig.getDisplayName(persona) || this.nakoName;
   }
 }

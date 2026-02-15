@@ -2,16 +2,16 @@
  * UIManager - UI 管理器
  * 负责处理所有用户界面相关的逻辑和 DOM 操作
  * 通过回调函数和事件总线与业务逻辑层通信
- * 
+ *
  * @example
  * const eventBus = new EventBus();
  * const ui = new UIManager(eventBus);
- * 
+ *
  * // 设置用户名选择器
  * ui.setupNameChooser((username) => {
  *   console.log('User chose name:', username);
  * });
- * 
+ *
  * // 添加聊天消息
  * ui.addChatMessage('K', 'As always, at 25:00.');
  */
@@ -797,71 +797,17 @@ class UIManager {
         }
 
         // 检测 AI 触发
-        // 支持：@Nako、@Asagi、@Miku、/nako、/asagi、/miku 等
-        const nakoMention = message.match(/@Nako/i);
-        const nakoCommand = message.match(/^\/nako\s+(.+)/i);
-        const asagiMention = message.match(/@Asagi/i);
-        const asagiCommand = message.match(/^\/asagi\s+(.+)/i);
-        const mikuMention = message.match(/@Miku/i);
-        const mikuCommand = message.match(/^\/miku\s+(.+)/i);
+        // 使用统一的配置驱动检测，支持：@Nako、@Asagi、@Miku、@汤川唯、/nako、/asagi、/miku、/yui 等
+        const aiTrigger = window.AIConfig.detectAITrigger(message);
 
         // 统一处理 AI 调用
-        if (nakoMention || nakoCommand || asagiMention || asagiCommand || mikuMention || mikuCommand) {
+        if (aiTrigger) {
           event.preventDefault();
 
-          let prompt = '';
-          let persona = null; // 人设名称
-          let aiName = ''; // AI 显示名称
-
-          if (nakoCommand) {
-            // /nako 命令
-            prompt = nakoCommand[1];
-            persona = 'nako';
-            aiName = 'Nako';
-          } else if (asagiCommand) {
-            // /asagi 命令
-            prompt = asagiCommand[1];
-            persona = 'asagi';
-            aiName = 'Asagi';
-          } else if (mikuCommand) {
-            // /miku 命令
-            prompt = mikuCommand[1];
-            persona = 'miku';
-            aiName = 'Miku';
-          } else if (message.startsWith('@Nako ')) {
-            // @Nako 开头
-            prompt = message.replace(/^@Nako\s+/i, '');
-            persona = 'nako';
-            aiName = 'Nako';
-          } else if (message.startsWith('@Asagi ')) {
-            // @Asagi 开头
-            prompt = message.replace(/^@Asagi\s+/i, '');
-            persona = 'asagi';
-            aiName = 'Asagi';
-          } else if (message.startsWith('@Miku ')) {
-            // @Miku 开头
-            prompt = message.replace(/^@Miku\s+/i, '');
-            persona = 'miku';
-            aiName = 'Miku';
-          } else if (nakoMention) {
-            // 句中提及 @Nako
-            prompt = message;
-            persona = 'nako';
-            aiName = 'Nako';
-          } else if (asagiMention) {
-            // 句中提及 @Asagi
-            prompt = message;
-            persona = 'asagi';
-            aiName = 'Asagi';
-          } else if (mikuMention) {
-            // 句中提及 @Miku
-            prompt = message;
-            persona = 'miku';
-            aiName = 'Miku';
-          }
+          const { persona, displayName, prompt } = aiTrigger;
 
           if (!prompt.trim()) {
-            this.showError(`请输入要问 ${aiName} 的问题`);
+            this.showError(`请输入要问 ${displayName} 的问题`);
             return;
           }
 

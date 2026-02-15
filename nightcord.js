@@ -257,7 +257,7 @@ class Nightcord {
       .map(msg => ({
         userId: msg.user,
         message: msg.text,
-        isBot: msg.user === 'Nako'
+        isBot: window.AIConfig.getAllDisplayNames().includes(msg.user)
       }));
 
     return recentMessages;
